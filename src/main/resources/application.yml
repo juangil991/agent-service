@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: vidacruz-agent
+  ai:
+    model:
+      chat: ${SPRING_AI_MODEL_CHAT:none}
+    openai:
+      api-key: ${SPRING_AI_OPENAI_API_KEY:dummy-key-for-local-startup}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+app:
+  assistant:
+    language: ${ASSISTANT_LANGUAGE:es}
+    llm:
+      provider: ${ASSISTANT_LLM_PROVIDER:google-ai-studio}
+      providers:
+        google-ai-studio:
+          base-url: ${GOOGLE_AI_STUDIO_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}
+          completions-path: ${GOOGLE_AI_STUDIO_COMPLETIONS_PATH:/v1/chat/completions}
+          model: ${GOOGLE_AI_STUDIO_MODEL:gemini-3.1-flash-lite}
+          api-key: ${GOOGLE_AI_STUDIO_API_KEY:}
+        groqcloud:
+          base-url: ${GROQCLOUD_BASE_URL:https://api.groq.com/openai}
+          completions-path: ${GROQCLOUD_COMPLETIONS_PATH:/v1/chat/completions}
+          model: ${GROQCLOUD_MODEL:llama-3.1-70b-versatile}
+          api-key: ${GROQCLOUD_API_KEY:}
+        mistral:
+          base-url: ${MISTRAL_BASE_URL:https://api.mistral.ai}
+          completions-path: ${MISTRAL_COMPLETIONS_PATH:/v1/chat/completions}
+          model: ${MISTRAL_MODEL:mistral-large-latest}
+          api-key: ${MISTRAL_API_KEY:}
+        openai:
+          base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+          completions-path: ${OPENAI_COMPLETIONS_PATH:/v1/chat/completions}
+          model: ${OPENAI_MODEL:gpt-4o-mini}
+          api-key: ${OPENAI_API_KEY:}
+
