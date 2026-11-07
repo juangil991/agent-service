@@ -17,6 +17,21 @@ repositories {
     mavenCentral()
 }
 
+sourceSets {
+    integrationTest {
+        java {
+            srcDir 'src/integrationTest/java'
+        }
+        compileClasspath += sourceSets.main.output + configurations.testRuntimeClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+configurations {
+    integrationTestImplementation.extendsFrom testImplementation
+    integrationTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
 dependencies {
     implementation platform('org.springframework.ai:spring-ai-bom:1.0.0')
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
@@ -29,6 +44,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-r2dbc'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis-reactive'
     implementation 'org.springframework.ai:spring-ai-starter-model-openai'
+    implementation 'org.springframework.ai:spring-ai-client-chat'
     implementation 'io.github.resilience4j:resilience4j-circuitbreaker:2.2.0'
     implementation 'io.github.resilience4j:resilience4j-reactor:2.2.0'
     implementation 'org.postgresql:r2dbc-postgresql'
@@ -36,10 +52,22 @@ dependencies {
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'io.projectreactor:reactor-test'
+    integrationTestImplementation 'org.testcontainers:junit-jupiter'
+    integrationTestImplementation 'org.testcontainers:postgresql'
+    integrationTestImplementation 'org.testcontainers:kafka'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+tasks.register('integrationTest', Test) {
+    description = 'Runs integration tests using Testcontainers.'
+    group = 'verification'
+    testClassesDirs = sourceSets.integrationTest.output.classesDirs
+    classpath = sourceSets.integrationTest.runtimeClasspath
+    useJUnitPlatform()
+    shouldRunAfter tasks.named('test')
 }
 
 tasks.named('bootJar') {

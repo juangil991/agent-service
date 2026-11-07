@@ -1,5 +1,6 @@
 package com.vidacruz.agent.integration;
 
+import com.vidacruz.agent.application.port.out.LlmPort;
 import com.vidacruz.agent.application.port.out.ProtocolRetrievalPort;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import org.junit.jupiter.api.Test;
@@ -34,6 +35,9 @@ class AssistantFlowIntegrationTest {
     @MockBean
     private ProtocolRetrievalPort retriever;
 
+    @MockBean
+    private LlmPort llm;
+
     @BeforeEach
     void configureRetriever() {
         webTestClient = webTestClient.mutate()
@@ -49,6 +53,10 @@ class AssistantFlowIntegrationTest {
                     : List.of();
             return Mono.just(evidence);
         });
+        when(llm.generateAnswer(anyString(), org.mockito.ArgumentMatchers.anyList(), anyString()))
+                    .thenReturn(Mono.just("Según PROTO-002, administrar antibiótico en la primera hora."));
+        when(llm.evaluateAnswer(anyString(), anyString(), org.mockito.ArgumentMatchers.anyList()))
+                    .thenReturn(Mono.just(true));
     }
 
     @Test
@@ -77,6 +85,26 @@ class AssistantFlowIntegrationTest {
                 .bodyValue("""
                         {
                           "pregunta": "¿Cuál es el tratamiento de primera línea para la diabetes tipo 2?"
+                        }
+                        """)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.respuesta").isEqualTo("No existe un protocolo disponible para la pregunta.")
+                .jsonPath("$.fuentes.length()").isEqualTo(0);
+    }
+
+    @Test
+    void returnsAbstentionWithoutSourcesWhenEvaluationRejectsAnswer() {
+        when(llm.evaluateAnswer(anyString(), anyString(), org.mockito.ArgumentMatchers.anyList()))
+                .thenReturn(Mono.just(false));
+
+        webTestClient.post()
+                .uri("/asistente/consulta")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {
+                          "pregunta": "¿Cuándo se administra el primer antibiótico en sepsis?"
                         }
                         """)
                 .exchange()

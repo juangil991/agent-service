@@ -1,6 +1,7 @@
 package com.vidacruz.agent.infrastructure.adapter.out.redis;
 
 import com.vidacruz.agent.application.port.out.UrgencyProjectionPort;
+import com.vidacruz.agent.application.port.out.UrgencyProjectionRecoveryPort;
 import com.vidacruz.agent.domain.model.TriageEvent;
 import com.vidacruz.agent.domain.model.TriageLevel;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
@@ -12,11 +13,13 @@ import java.util.List;
 import java.util.Map;
 
 @Repository
-public class RedisUrgencyProjectionAdapter implements UrgencyProjectionPort {
+public class RedisUrgencyProjectionAdapter implements UrgencyProjectionPort, UrgencyProjectionRecoveryPort {
 
     private static final String PATIENTS_KEY = "vidacruz:urgencias:pacientes";
     private static final String COUNTS_KEY = "vidacruz:urgencias:conteos";
     private static final String PROCESSED_EVENTS_KEY = "vidacruz:urgencias:eventos-procesados";
+    private static final String RECOVERY_MARKER_KEY = "vidacruz:urgencias:proyeccion-completa";
+    private static final String RECOVERY_MARKER_VALUE = "1";
 
     private static final DefaultRedisScript<Long> APPLY_EVENT = new DefaultRedisScript<>("""
             if redis.call('SISMEMBER', KEYS[3], ARGV[1]) == 1 then
@@ -75,5 +78,30 @@ public class RedisUrgencyProjectionAdapter implements UrgencyProjectionPort {
                 .collectMap(
                         entry -> TriageLevel.valueOf(entry.getKey()),
                         entry -> Long.parseLong(entry.getValue()));
+    }
+
+    @Override
+    public Mono<Boolean> isComplete() {
+        return redis.opsForValue()
+                .get(RECOVERY_MARKER_KEY)
+                .map(RECOVERY_MARKER_VALUE::equals)
+                .defaultIfEmpty(false);
+    }
+
+    @Override
+    public Mono<Void> clear() {
+        return redis.delete(
+                        PATIENTS_KEY,
+                        COUNTS_KEY,
+                        PROCESSED_EVENTS_KEY,
+                        RECOVERY_MARKER_KEY)
+                .then();
+    }
+
+    @Override
+    public Mono<Void> markComplete() {
+        return redis.opsForValue()
+                .set(RECOVERY_MARKER_KEY, RECOVERY_MARKER_VALUE)
+                .then();
     }
 }

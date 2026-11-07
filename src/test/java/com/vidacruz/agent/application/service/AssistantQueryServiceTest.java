@@ -3,7 +3,6 @@ package com.vidacruz.agent.application.service;
 import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.out.LlmPort;
 import com.vidacruz.agent.application.port.out.ProtocolRetrievalPort;
-import com.vidacruz.agent.domain.model.AnswerVerification;
 import com.vidacruz.agent.domain.model.AssistantAnswer;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -51,11 +50,11 @@ class AssistantQueryServiceTest {
                 .thenReturn(Mono.just(evidence));
         when(llm.generateAnswer(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq("es")))
                 .thenReturn(Mono.just("Se recomienda antibiótico en la primera hora."));
-        when(llm.verifyAnswer(
+        when(llm.evaluateAnswer(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyList()))
-                .thenReturn(Mono.just(verification(true)));
+                .thenReturn(Mono.just(true));
 
         StepVerifier.create(service.ask("¿Cuándo se administra el primer antibiótico en sepsis?"))
                 .assertNext(answer -> {
@@ -71,7 +70,7 @@ class AssistantQueryServiceTest {
                 .timer()
                 .count()).isEqualTo(1);
         assertThat(meterRegistry.get("vidacruz.llm.latency")
-                .tag("operation", "verify_answer")
+                .tag("operation", "evaluate_answer")
                 .tag("outcome", "success")
                 .timer()
                 .count()).isEqualTo(1);
@@ -93,7 +92,7 @@ class AssistantQueryServiceTest {
                 })
                 .verifyComplete();
 
-        verify(llm, never()).verifyAnswer(
+        verify(llm, never()).evaluateAnswer(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyList());
@@ -107,13 +106,11 @@ class AssistantQueryServiceTest {
                 .thenReturn(Mono.just(evidence));
         when(llm.generateAnswer(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq("es")))
                 .thenReturn(Mono.just("Administre antibiótico en la primera hora y agregue corticoides."));
-        when(llm.verifyAnswer(
+        when(llm.evaluateAnswer(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyList()))
-                .thenReturn(Mono.just(new AnswerVerification(List.of(
-                        new AnswerVerification.ClaimAssessment("antibiótico en la primera hora", true),
-                        new AnswerVerification.ClaimAssessment("agregar corticoides", false)))));
+                .thenReturn(Mono.just(false));
 
         StepVerifier.create(service.ask("¿Cuándo se administra el primer antibiótico en sepsis?"))
                 .assertNext(answer -> {
@@ -154,14 +151,14 @@ class AssistantQueryServiceTest {
     }
 
     @Test
-    void verificationFailureBubblesAsUnavailable() {
+    void evaluationFailureBubblesAsUnavailable() {
         List<ProtocolChunk> evidence = List.of(
                 new ProtocolChunk("PROTO-002", "Acciones iniciales", "En sepsis, administrar antibiótico de amplio espectro en la primera hora."));
         when(retriever.retrieve("¿Cuándo se administra el primer antibiótico en sepsis?", 3))
                 .thenReturn(Mono.just(evidence));
         when(llm.generateAnswer(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq("es")))
                 .thenReturn(Mono.just("Se recomienda antibiótico en la primera hora."));
-        when(llm.verifyAnswer(
+        when(llm.evaluateAnswer(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyList()))
@@ -177,11 +174,6 @@ class AssistantQueryServiceTest {
         StepVerifier.create(service.ask("   "))
                 .expectError(IllegalArgumentException.class)
                 .verify();
-    }
-
-    private AnswerVerification verification(boolean supported) {
-        return new AnswerVerification(List.of(
-                new AnswerVerification.ClaimAssessment("antibiótico en la primera hora", supported)));
     }
 }
 

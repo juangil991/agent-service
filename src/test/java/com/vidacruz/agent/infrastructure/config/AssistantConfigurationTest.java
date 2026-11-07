@@ -1,6 +1,5 @@
 package com.vidacruz.agent.infrastructure.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.out.LlmPort;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
@@ -20,14 +19,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AssistantConfigurationTest {
 
     private final AssistantConfiguration configuration = new AssistantConfiguration();
-    private final ObjectMapper objectMapper = new ObjectMapper();
     private static final List<ProtocolChunk> EVIDENCE = List.of(
             new ProtocolChunk("PROTO-001", "Sección", "Contenido"));
 
     @Test
     void returnsStubAdapterWhenStubProviderIsSelected() {
         LlmPort llm = configuration.llmPort(
-                objectMapper,
                 CircuitBreaker.ofDefaults("llm"),
                 "stub",
                 "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -53,7 +50,6 @@ class AssistantConfigurationTest {
     @Test
     void unsupportedProviderReturnsUnavailableError() {
         LlmPort llm = configuration.llmPort(
-                objectMapper,
                 CircuitBreaker.ofDefaults("llm"),
                 "anthropic",
                 "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -84,7 +80,6 @@ class AssistantConfigurationTest {
     @Test
     void selectedProviderWithoutApiKeyReturnsUnavailableError() {
         LlmPort llm = configuration.llmPort(
-                objectMapper,
                 CircuitBreaker.ofDefaults("llm"),
                 "mistral",
                 "https://generativelanguage.googleapis.com/v1beta/openai",
@@ -131,7 +126,6 @@ class AssistantConfigurationTest {
 
         try {
             LlmPort llm = configuration.llmPort(
-                    objectMapper,
                     CircuitBreaker.ofDefaults("llm"),
                     "openai",
                     "https://generativelanguage.googleapis.com/v1beta/openai",

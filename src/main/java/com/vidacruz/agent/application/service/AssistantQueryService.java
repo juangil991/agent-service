@@ -65,16 +65,16 @@ public class AssistantQueryService implements AskAssistantUseCase {
                                 if (NO_PROTOCOL_MESSAGE.equals(normalizedAnswer)) {
                                     return Mono.just(new AssistantAnswer(NO_PROTOCOL_MESSAGE, List.of()));
                                 }
-                                return timed("verify_answer", llm.verifyAnswer(question, normalizedAnswer, evidence))
+                                return timed("evaluate_answer", llm.evaluateAnswer(question, normalizedAnswer, evidence))
                                         .switchIfEmpty(Mono.error(new LlmUnavailableException(
-                                                "El proveedor de IA no devolvió resultado de verificación")))
-                                        .map(verification -> verification.allClaimsSupported()
+                                                "El proveedor de IA no devolvió resultado de evaluación")))
+                                        .map(passed -> passed
                                                 ? new AssistantAnswer(normalizedAnswer, fuentes)
                                                 : new AssistantAnswer(NO_PROTOCOL_MESSAGE, List.of()))
                                         .onErrorMap(error -> error instanceof LlmUnavailableException
                                                 ? error
                                                 : new LlmUnavailableException(
-                                                        "No se pudo verificar el soporte de la respuesta", error));
+                                                        "No se pudo evaluar la respuesta", error));
                             })
                             .onErrorMap(error -> error instanceof LlmUnavailableException
                                     ? error
@@ -86,7 +86,7 @@ public class AssistantQueryService implements AskAssistantUseCase {
         return Mono.defer(() -> {
             Timer.Sample sample = Timer.start(meterRegistry);
             return result.doFinally(signal -> sample.stop(Timer.builder("vidacruz.llm.latency")
-                    .description("Latency of LLM answer and verification operations")
+                    .description("Latency of LLM answer and evaluation operations")
                     .tag("operation", operation)
                     .tag("outcome", signal == reactor.core.publisher.SignalType.ON_ERROR ? "error" : "success")
                     .register(meterRegistry)));

@@ -1,12 +1,10 @@
 package com.vidacruz.agent.infrastructure.config;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.in.AskAssistantUseCase;
 import com.vidacruz.agent.application.port.out.LlmPort;
 import com.vidacruz.agent.application.port.out.ProtocolRetrievalPort;
 import com.vidacruz.agent.application.service.AssistantQueryService;
-import com.vidacruz.agent.domain.model.AnswerVerification;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import com.vidacruz.agent.domain.service.StructureBasedChunker;
 import com.vidacruz.agent.infrastructure.adapter.out.llm.CircuitBreakingLlmAdapter;
@@ -18,6 +16,8 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.evaluation.FactCheckingEvaluator;
+import org.springframework.ai.chat.evaluation.RelevancyEvaluator;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -60,7 +60,6 @@ public class AssistantConfiguration {
 
     @Bean
     LlmPort llmPort(
-            ObjectMapper objectMapper,
             CircuitBreaker llmCircuitBreaker,
             @Value("${app.assistant.llm.provider:google-ai-studio}") String provider,
             @Value("${app.assistant.llm.providers.google-ai-studio.base-url:https://generativelanguage.googleapis.com/v1beta/openai}") String googleBaseUrl,
@@ -133,7 +132,10 @@ public class AssistantConfiguration {
                 ChatClient.builder(chatModel).build(),
                 selected.displayName(),
                 selected.apiKey(),
-                objectMapper);
+                RelevancyEvaluator.builder()
+                        .chatClientBuilder(ChatClient.builder(chatModel))
+                        .build(),
+                new FactCheckingEvaluator(ChatClient.builder(chatModel)));
         return new CircuitBreakingLlmAdapter(providerAdapter, llmCircuitBreaker);
     }
 
@@ -158,7 +160,7 @@ public class AssistantConfiguration {
             }
 
             @Override
-            public Mono<AnswerVerification> verifyAnswer(
+            public Mono<Boolean> evaluateAnswer(
                     String question,
                     String answer,
                     List<ProtocolChunk> evidence) {

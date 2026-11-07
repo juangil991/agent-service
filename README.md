@@ -72,7 +72,7 @@ Para ejecución local desde `vidacruz-agent`, configura la URL/credenciales R2DB
 
 La consulta genera un embedding de tipo `query`, combina los rankings BM25 y vectorial mediante RRF y solo conserva vecinos vectoriales dentro de `RAG_MAX_COSINE_DISTANCE`. Si no hay evidencia elegible, conserva la respuesta de abstención existente.
 
-Cuando existe evidencia, el asistente evalúa en una segunda llamada cada afirmación factual o clínica de la respuesta contra los fragmentos recuperados. Si alguna no está respaldada, descarta toda la respuesta y devuelve la abstención sin fuentes; si no se puede completar o interpretar la verificación, devuelve `503` en vez de exponer contenido no verificado. La evaluación semántica con LLM reduce el riesgo de alucinaciones, pero no constituye una garantía matemática.
+Cuando existe evidencia, el asistente usa `RelevancyEvaluator` y `FactCheckingEvaluator` de Spring AI para evaluar la respuesta contra la pregunta y los fragmentos recuperados. Solo entrega la respuesta y sus fuentes si ambos evaluadores la aprueban; si alguno la rechaza, devuelve la abstención sin fuentes. Si la evaluación no se puede completar, devuelve `503` en vez de exponer contenido no evaluado. La evaluación semántica con LLM reduce el riesgo de alucinaciones, pero no constituye una garantía matemática.
 
 Endpoint:
 
@@ -81,6 +81,8 @@ Endpoint:
 - Standalone `bootRun`: `POST http://localhost:8080/asistente/consulta`
 
 La respuesta del estado contiene `pacientesActivosPorNivel` con todos los niveles. `REGISTRADO` y `EN_CONSULTA` cuentan como activos; `ALTA` no. El estado se actualiza asíncronamente a partir de `triaje.eventos`, sin llamadas a la API de Triaje. La deduplicación de `eventId` y la actualización de paciente/conteos se ejecutan en una operación atómica de Redis.
+
+Al iniciar, el Agent comprueba una marca de proyección completa en Redis. Si falta (por ejemplo, tras vaciar Redis), reproduce el historial Kafka retenido hasta los offsets de fin capturados para cada partición, sin modificar los offsets del consumer group normal. Durante el replay el Agent permanece no-ready y no inicia el consumer normal; si Kafka falla, reintenta con backoff. La marca solo se escribe después de reconstruir toda la proyección. Para que la reconstrucción sea completa, la retención del tópico `triaje.eventos` debe conservar el historial requerido; si Kafka ya eliminó offsets iniciales, el Agent no alcanza readiness.
 
 Para ejecución independiente con `bootRun`, configura `KAFKA_BOOTSTRAP_SERVERS`, `REDIS_HOST`/`REDIS_PORT` y el `KAFKA_TRIAGE_CONSUMER_GROUP`; el consumidor se puede deshabilitar con `KAFKA_CONSUMER_ENABLED=false`.
 
@@ -141,5 +143,11 @@ Puedes ajustar la política con `LLM_CIRCUIT_BREAKER_FAILURE_WINDOW_SIZE` (defau
 
 ```powershell
 .\gradlew.bat test
+```
+
+Las pruebas de integración requieren Docker y levantan ParadeDB, Kafka y Redis efímeros con Testcontainers:
+
+```powershell
+.\gradlew.bat integrationTest
 ```
 

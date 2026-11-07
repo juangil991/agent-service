@@ -2,7 +2,6 @@ package com.vidacruz.agent.infrastructure.adapter.out.llm;
 
 import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.out.LlmPort;
-import com.vidacruz.agent.domain.model.AnswerVerification;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
@@ -28,11 +27,11 @@ public class CircuitBreakingLlmAdapter implements LlmPort {
     }
 
     @Override
-    public Mono<AnswerVerification> verifyAnswer(
+    public Mono<Boolean> evaluateAnswer(
             String question,
             String answer,
             List<ProtocolChunk> evidence) {
-        return protect(() -> delegate.verifyAnswer(question, answer, evidence));
+        return protect(() -> delegate.evaluateAnswer(question, answer, evidence));
     }
 
     private <T> Mono<T> protect(Supplier<Mono<T>> operation) {

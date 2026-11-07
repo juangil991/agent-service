@@ -2,7 +2,6 @@ package com.vidacruz.agent.infrastructure.adapter.out.llm;
 
 import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.out.LlmPort;
-import com.vidacruz.agent.domain.model.AnswerVerification;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
@@ -54,9 +53,8 @@ class CircuitBreakingLlmAdapterTest {
     void successfulHalfOpenProbeClosesCircuitAndAllowsVerification() {
         LlmPort provider = mock(LlmPort.class);
         when(provider.generateAnswer("pregunta", EVIDENCE, "es")).thenReturn(Mono.just("respuesta"));
-        when(provider.verifyAnswer("pregunta", "respuesta", EVIDENCE))
-                .thenReturn(Mono.just(new AnswerVerification(List.of(
-                        new AnswerVerification.ClaimAssessment("afirmación", true)))));
+        when(provider.evaluateAnswer("pregunta", "respuesta", EVIDENCE))
+                .thenReturn(Mono.just(true));
         CircuitBreaker circuitBreaker = circuitBreaker(Duration.ofSeconds(30));
         circuitBreaker.transitionToOpenState();
         circuitBreaker.transitionToHalfOpenState();
@@ -68,21 +66,21 @@ class CircuitBreakingLlmAdapterTest {
 
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
 
-        StepVerifier.create(adapter.verifyAnswer("pregunta", "respuesta", EVIDENCE))
-                .expectNextMatches(AnswerVerification::allClaimsSupported)
+        StepVerifier.create(adapter.evaluateAnswer("pregunta", "respuesta", EVIDENCE))
+                .expectNext(true)
                 .verifyComplete();
     }
 
     @Test
     void verificationFailuresAlsoOpenCircuitForGenerationCalls() {
         LlmPort provider = mock(LlmPort.class);
-        when(provider.verifyAnswer("pregunta", "respuesta", EVIDENCE))
+        when(provider.evaluateAnswer("pregunta", "respuesta", EVIDENCE))
                 .thenReturn(Mono.error(new RuntimeException("upstream failed")));
         CircuitBreaker circuitBreaker = circuitBreaker(Duration.ofSeconds(30));
         CircuitBreakingLlmAdapter adapter = new CircuitBreakingLlmAdapter(provider, circuitBreaker);
 
         for (int attempt = 0; attempt < 5; attempt++) {
-            StepVerifier.create(adapter.verifyAnswer("pregunta", "respuesta", EVIDENCE))
+            StepVerifier.create(adapter.evaluateAnswer("pregunta", "respuesta", EVIDENCE))
                     .expectError(RuntimeException.class)
                     .verify();
         }
@@ -91,7 +89,7 @@ class CircuitBreakingLlmAdapterTest {
                 .expectError(LlmUnavailableException.class)
                 .verify();
 
-        verify(provider, times(5)).verifyAnswer("pregunta", "respuesta", EVIDENCE);
+        verify(provider, times(5)).evaluateAnswer("pregunta", "respuesta", EVIDENCE);
     }
 
     private CircuitBreaker circuitBreaker(Duration openWaitDuration) {

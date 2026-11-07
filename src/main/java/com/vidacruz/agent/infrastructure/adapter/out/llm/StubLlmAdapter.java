@@ -1,7 +1,6 @@
 package com.vidacruz.agent.infrastructure.adapter.out.llm;
 
 import com.vidacruz.agent.application.port.out.LlmPort;
-import com.vidacruz.agent.domain.model.AnswerVerification;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import reactor.core.publisher.Mono;
 
@@ -20,7 +19,7 @@ public class StubLlmAdapter implements LlmPort {
     }
 
     @Override
-    public Mono<AnswerVerification> verifyAnswer(
+    public Mono<Boolean> evaluateAnswer(
             String question,
             String answer,
             List<ProtocolChunk> evidence) {
@@ -29,8 +28,7 @@ public class StubLlmAdapter implements LlmPort {
                         chunk.protocolo(),
                         chunk.seccion(),
                         chunk.contenido())));
-        return Mono.just(new AnswerVerification(List.of(
-                new AnswerVerification.ClaimAssessment(answer, matchesEvidence))));
+        return Mono.just(matchesEvidence);
     }
 }
 
