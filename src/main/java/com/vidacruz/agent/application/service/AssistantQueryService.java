@@ -53,7 +53,24 @@ public class AssistantQueryService implements AskAssistantUseCase {
                             .toList();
 
                     return llm.generateAnswer(question, evidence, language)
-                            .map(answer -> new AssistantAnswer(cleanAnswer(answer), fuentes))
+                            .switchIfEmpty(Mono.error(new LlmUnavailableException(
+                                    "El proveedor de IA devolvió una respuesta vacía")))
+                            .flatMap(answer -> {
+                                String normalizedAnswer = cleanAnswer(answer);
+                                if (NO_PROTOCOL_MESSAGE.equals(normalizedAnswer)) {
+                                    return Mono.just(new AssistantAnswer(NO_PROTOCOL_MESSAGE, List.of()));
+                                }
+                                return llm.verifyAnswer(question, normalizedAnswer, evidence)
+                                        .switchIfEmpty(Mono.error(new LlmUnavailableException(
+                                                "El proveedor de IA no devolvió resultado de verificación")))
+                                        .map(verification -> verification.allClaimsSupported()
+                                                ? new AssistantAnswer(normalizedAnswer, fuentes)
+                                                : new AssistantAnswer(NO_PROTOCOL_MESSAGE, List.of()))
+                                        .onErrorMap(error -> error instanceof LlmUnavailableException
+                                                ? error
+                                                : new LlmUnavailableException(
+                                                        "No se pudo verificar el soporte de la respuesta", error));
+                            })
                             .onErrorMap(error -> error instanceof LlmUnavailableException
                                     ? error
                                     : new LlmUnavailableException("El proveedor de IA no está disponible", error));

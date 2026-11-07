@@ -62,6 +62,8 @@ Para ejecución local desde `vidacruz-agent`, configura la URL/credenciales R2DB
 
 La consulta genera un embedding de tipo `query`, combina los rankings BM25 y vectorial mediante RRF y solo conserva vecinos vectoriales dentro de `RAG_MAX_COSINE_DISTANCE`. Si no hay evidencia elegible, conserva la respuesta de abstención existente.
 
+Cuando existe evidencia, el asistente evalúa en una segunda llamada cada afirmación factual o clínica de la respuesta contra los fragmentos recuperados. Si alguna no está respaldada, descarta toda la respuesta y devuelve la abstención sin fuentes; si no se puede completar o interpretar la verificación, devuelve `503` en vez de exponer contenido no verificado. La evaluación semántica con LLM reduce el riesgo de alucinaciones, pero no constituye una garantía matemática.
+
 Endpoint:
 
 - Compose: `POST http://localhost:8081/asistente/consulta`

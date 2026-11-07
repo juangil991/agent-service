@@ -1,9 +1,13 @@
 package com.vidacruz.agent.infrastructure.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.in.AskAssistantUseCase;
 import com.vidacruz.agent.application.port.out.LlmPort;
 import com.vidacruz.agent.application.port.out.ProtocolRetrievalPort;
 import com.vidacruz.agent.application.service.AssistantQueryService;
+import com.vidacruz.agent.domain.model.AnswerVerification;
+import com.vidacruz.agent.domain.model.ProtocolChunk;
 import com.vidacruz.agent.domain.service.StructureBasedChunker;
 import com.vidacruz.agent.infrastructure.adapter.out.llm.SpringAiOpenAiCompatibleLlmAdapter;
 import com.vidacruz.agent.infrastructure.adapter.out.llm.StubLlmAdapter;
@@ -20,6 +24,7 @@ import org.springframework.retry.support.RetryTemplate;
 import reactor.core.publisher.Mono;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
@@ -34,6 +39,7 @@ public class AssistantConfiguration {
 
     @Bean
     LlmPort llmPort(
+            ObjectMapper objectMapper,
             @Value("${app.assistant.llm.provider:google-ai-studio}") String provider,
             @Value("${app.assistant.llm.providers.google-ai-studio.base-url:https://generativelanguage.googleapis.com/v1beta/openai}") String googleBaseUrl,
             @Value("${app.assistant.llm.providers.google-ai-studio.completions-path:/v1/chat/completions}") String googleCompletionsPath,
@@ -104,7 +110,8 @@ public class AssistantConfiguration {
         return new SpringAiOpenAiCompatibleLlmAdapter(
                 ChatClient.builder(chatModel).build(),
                 selected.displayName(),
-                selected.apiKey());
+                selected.apiKey(),
+                objectMapper);
     }
 
     @Bean
@@ -117,8 +124,23 @@ public class AssistantConfiguration {
     }
 
     private LlmPort unavailablePort(String message) {
-        return (question, evidence, language) -> Mono.error(
-                new com.vidacruz.agent.application.exception.LlmUnavailableException(message));
+        return new LlmPort() {
+            @Override
+            public Mono<String> generateAnswer(
+                    String question,
+                    List<ProtocolChunk> evidence,
+                    String language) {
+                return Mono.error(new LlmUnavailableException(message));
+            }
+
+            @Override
+            public Mono<AnswerVerification> verifyAnswer(
+                    String question,
+                    String answer,
+                    List<ProtocolChunk> evidence) {
+                return Mono.error(new LlmUnavailableException(message));
+            }
+        };
     }
 
     private String normalizeProvider(String provider) {
