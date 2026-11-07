@@ -92,6 +92,7 @@ services:
       AGENT_R2DBC_URL: r2dbc:postgresql://agent-postgres:5432/${AGENT_POSTGRES_DB:-vidacruz_agent}
       AGENT_DB_USERNAME: ${AGENT_DB_USERNAME:-vidacruz_agent}
       AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:?Set AGENT_DB_PASSWORD in vidacruz-agent/.env}
+      AGENT_API_KEY: ${AGENT_API_KEY:?Set AGENT_API_KEY in vidacruz-agent/.env}
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_TRIAGE_TOPIC: triaje.eventos
       KAFKA_TRIAGE_CONSUMER_GROUP: vidacruz-agent-urgencias

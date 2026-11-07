@@ -29,6 +29,16 @@ La API del Asistente queda en `http://localhost:8081`. Para ejecutar solo el Age
 
 `bootRun` requiere que PostgreSQL del agente esté disponible (`AGENT_R2DBC_URL`, `AGENT_DB_USERNAME` y `AGENT_DB_PASSWORD`). En Compose, el agente usa una base separada del PostgreSQL de Triaje.
 
+## Autenticación de API
+
+Las rutas de negocio requieren la cabecera `X-API-Key` con el valor de `AGENT_API_KEY`. Configura una clave aleatoria en el `.env` usado por Compose o como variable de entorno al ejecutar `bootRun`; no reutilices la clave de Triage. El servicio falla al arrancar si la clave falta o está vacía. Solo `/actuator/health`, `/actuator/health/**` (incluidas readiness y liveness) quedan públicos.
+
+Ejemplo:
+
+```powershell
+curl.exe -H "X-API-Key: $env:AGENT_API_KEY" http://localhost:8081/asistente/estado-urgencias
+```
+
 ### Ejecutar solo el proyecto del agente con Docker
 
 Desde `vidacruz-agent`, crea `.env` si aún no existe y configura `VOYAGE_API_KEY`. Después inicia los contenedores propios del agente:
@@ -84,6 +94,7 @@ Payload (`Content-Type: application/json`):
 
 ## Variables de entorno
 
+- `AGENT_API_KEY` (requerida; credencial para las rutas de negocio, enviada en `X-API-Key`)
 - `ASSISTANT_LLM_PROVIDER` (`google-ai-studio`, `groqcloud`, `mistral`, `openai` o `stub`)
 - `ASSISTANT_LANGUAGE` (default: `es`)
 - `VOYAGE_API_KEY` (requerida para RAG); `VOYAGE_MODEL` (default: `voyage-4`, 1024 dimensiones)

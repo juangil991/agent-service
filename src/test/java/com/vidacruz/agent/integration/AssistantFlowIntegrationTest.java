@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
+                "app.security.api-key=test-agent-integration-key",
                 "app.assistant.llm.provider=stub",
                 "app.kafka.consumer.enabled=false",
                 "spring.sql.init.mode=never"
@@ -35,6 +36,9 @@ class AssistantFlowIntegrationTest {
 
     @BeforeEach
     void configureRetriever() {
+        webTestClient = webTestClient.mutate()
+                .defaultHeader("X-API-Key", "test-agent-integration-key")
+                .build();
         when(retriever.retrieve(anyString(), anyInt())).thenAnswer(invocation -> {
             String question = invocation.getArgument(0);
             List<ProtocolChunk> evidence = question.contains("sepsis")

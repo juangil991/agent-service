@@ -36,6 +36,8 @@ management:
           include: readinessState
 
 app:
+  security:
+    api-key: ${AGENT_API_KEY}
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     topic: ${KAFKA_TRIAGE_TOPIC:triaje.eventos}
