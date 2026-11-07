@@ -3,6 +3,7 @@ package com.vidacruz.agent.infrastructure.config;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
@@ -53,6 +54,12 @@ public class ApiKeySecurityConfiguration {
                 return Mono.empty();
             }
             String apiKey = exchange.getRequest().getHeaders().getFirst(API_KEY_HEADER);
+            if (apiKey == null && path.equals("/actuator/prometheus")) {
+                String authorization = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+                if (authorization != null && authorization.regionMatches(true, 0, "Bearer ", 0, 7)) {
+                    apiKey = authorization.substring(7).trim();
+                }
+            }
             return apiKey == null
                     ? Mono.empty()
                     : Mono.just(UsernamePasswordAuthenticationToken.unauthenticated("api-key-client", apiKey));

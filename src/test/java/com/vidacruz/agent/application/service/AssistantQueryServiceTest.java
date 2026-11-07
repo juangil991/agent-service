@@ -45,6 +45,24 @@ class AssistantQueryServiceTest {
             "Crisis Hipertensiva, Manejo Inicial",
             "Medidas Iniciales",
             CRISIS_QUOTE);
+    private static final String PEDIATRIC_ORAL_QUESTION =
+            "¿Cuál es la hidratación oral para deshidratación pediátrica leve o moderada?";
+    private static final String PEDIATRIC_ORAL_QUOTE = "Solución oral 50 ml/kg en 4 horas.";
+    private static final ProtocolChunk PEDIATRIC_ORAL_CHUNK = chunk(
+            "chunk-proto-003-oral",
+            "PROTO-003",
+            "Deshidratación Pediátrica",
+            "Rehidratación",
+            "Leve o moderada sin vómito: " + PEDIATRIC_ORAL_QUOTE);
+    private static final String PEDIATRIC_SEVERE_QUESTION =
+            "¿Qué manejo indica PROTO-003 para deshidratación pediátrica severa?";
+    private static final String PEDIATRIC_SEVERE_QUOTE = "Vía intravenosa, bolo de 20 ml/kg.";
+    private static final ProtocolChunk PEDIATRIC_SEVERE_CHUNK = chunk(
+            "chunk-proto-003-severe",
+            "PROTO-003",
+            "Deshidratación Pediátrica",
+            "Rehidratación",
+            "Severa: " + PEDIATRIC_SEVERE_QUOTE);
 
     private final LlmPort llm = mock(LlmPort.class);
     private final ProtocolRetrievalPort retriever = mock(ProtocolRetrievalPort.class);
@@ -96,6 +114,48 @@ class AssistantQueryServiceTest {
                 .tag("outcome", "success")
                 .timer()
                 .count()).isEqualTo(1);
+    }
+
+    @Test
+    void returnsTheVerifiedOralRehydrationExcerptAndProto003Citation() throws Exception {
+        when(retriever.retrieve(PEDIATRIC_ORAL_QUESTION, 3))
+                .thenReturn(Mono.just(List.of(PEDIATRIC_ORAL_CHUNK)));
+        when(llm.selectEvidence(PEDIATRIC_ORAL_QUESTION, List.of(PEDIATRIC_ORAL_CHUNK), "es"))
+                .thenReturn(Mono.just(selection(PEDIATRIC_ORAL_CHUNK, PEDIATRIC_ORAL_QUOTE)));
+
+        StepVerifier.create(service.ask(PEDIATRIC_ORAL_QUESTION))
+                .assertNext(answer -> {
+                    assertThat(answer.respuesta()).isEqualTo(PEDIATRIC_ORAL_QUOTE);
+                    assertThat(answer.fuentes()).containsExactly(
+                            new SourceCitation("PROTO-003", "Rehidratación"));
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void returnsTheVerifiedSevereRehydrationExcerptAndProto003Citation() throws Exception {
+        when(retriever.retrieve(PEDIATRIC_SEVERE_QUESTION, 3))
+                .thenReturn(Mono.just(List.of(PEDIATRIC_SEVERE_CHUNK)));
+        when(llm.selectEvidence(PEDIATRIC_SEVERE_QUESTION, List.of(PEDIATRIC_SEVERE_CHUNK), "es"))
+                .thenReturn(Mono.just(selection(PEDIATRIC_SEVERE_CHUNK, PEDIATRIC_SEVERE_QUOTE)));
+
+        StepVerifier.create(service.ask(PEDIATRIC_SEVERE_QUESTION))
+                .assertNext(answer -> {
+                    assertThat(answer.respuesta()).isEqualTo(PEDIATRIC_SEVERE_QUOTE);
+                    assertThat(answer.fuentes()).containsExactly(
+                            new SourceCitation("PROTO-003", "Rehidratación"));
+                })
+                .verifyComplete();
+    }
+
+    @Test
+    void abstainsWhenProto003EvidenceDoesNotAnswerTheQuestion() {
+        String question = "¿Cuál es el tratamiento de primera línea para diabetes tipo 2?";
+        when(retriever.retrieve(question, 3)).thenReturn(Mono.just(List.of(PEDIATRIC_ORAL_CHUNK)));
+
+        assertAbstains(question);
+
+        verifyNoInteractions(llm);
     }
 
     @Test

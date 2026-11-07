@@ -6,5 +6,5 @@
 * **Severa:** Pérdida $> 8\%$ del peso corporal o presencia de alteración del estado mental.
 
 ## Rehidratación
-* **Leve o moderada:** Rehidratación oral si no presenta vómitos incontrolables o signos de shock.
-* **Severa / Fracaso vía oral:** Rehidratación endovenosa inmediata y estabilización hemodinámica.
+* **Leve o moderada sin vómito:** Solución oral 50 ml/kg en 4 horas.
+* **Severa:** Vía intravenosa, bolo de 20 ml/kg.

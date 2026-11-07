@@ -53,6 +53,41 @@ class ApiKeySecurityConfigurationTest {
     }
 
     @Test
+    void metricsRequestRequiresApiKey() {
+        client.get()
+                .uri("/actuator/prometheus")
+                .exchange()
+                .expectStatus().isUnauthorized();
+    }
+
+    @Test
+    void validBearerApiKeyAllowsMetricsRequest() {
+        client.get()
+                .uri("/actuator/prometheus")
+                .headers(headers -> headers.setBearerAuth(API_KEY))
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void invalidBearerApiKeyReturnsUnauthorizedForMetrics() {
+        client.get()
+                .uri("/actuator/prometheus")
+                .headers(headers -> headers.setBearerAuth("wrong"))
+                .exchange()
+                .expectStatus().isUnauthorized();
+    }
+
+    @Test
+    void bearerApiKeyDoesNotAuthenticateBusinessRequests() {
+        client.get()
+                .uri("/test/protected")
+                .headers(headers -> headers.setBearerAuth(API_KEY))
+                .exchange()
+                .expectStatus().isUnauthorized();
+    }
+
+    @Test
     void healthPathsDoNotRequireAnApiKey() {
         client.get()
                 .uri("/actuator/health/readiness")
@@ -88,6 +123,11 @@ class ApiKeySecurityConfigurationTest {
         @GetMapping("/test/protected")
         Mono<String> protectedRoute() {
             return Mono.just("ok");
+        }
+
+        @GetMapping("/actuator/prometheus")
+        Mono<String> metricsRoute() {
+            return Mono.just("metrics");
         }
     }
 }

@@ -34,4 +34,20 @@ class MarkdownProtocolSourceAdapterTest {
         assertThat(document.source()).isEqualTo("PROTO-004.md");
         assertThat(document.markdown()).contains("## Evaluación");
     }
+
+    @Test
+    void bundledProto003ContainsTheRequiredRehydrationRegimens() {
+        ProtocolDocument document = new MarkdownProtocolSourceAdapter(
+                Path.of("protocols").toAbsolutePath().toString())
+                .loadDocuments()
+                .block()
+                .stream()
+                .filter(candidate -> candidate.markdown().contains("# PROTO-003"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(document.markdown())
+                .contains("Leve o moderada sin vómito:** Solución oral 50 ml/kg en 4 horas.")
+                .contains("Severa:** Vía intravenosa, bolo de 20 ml/kg.");
+    }
 }
