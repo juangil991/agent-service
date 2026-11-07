@@ -5,6 +5,7 @@ import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.out.LlmPort;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import com.vidacruz.agent.infrastructure.adapter.out.llm.StubLlmAdapter;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.junit.jupiter.api.Test;
 import reactor.test.StepVerifier;
 
@@ -27,6 +28,7 @@ class AssistantConfigurationTest {
     void returnsStubAdapterWhenStubProviderIsSelected() {
         LlmPort llm = configuration.llmPort(
                 objectMapper,
+                CircuitBreaker.ofDefaults("llm"),
                 "stub",
                 "https://generativelanguage.googleapis.com/v1beta/openai",
                 "/v1/chat/completions",
@@ -52,6 +54,7 @@ class AssistantConfigurationTest {
     void unsupportedProviderReturnsUnavailableError() {
         LlmPort llm = configuration.llmPort(
                 objectMapper,
+                CircuitBreaker.ofDefaults("llm"),
                 "anthropic",
                 "https://generativelanguage.googleapis.com/v1beta/openai",
                 "/v1/chat/completions",
@@ -82,6 +85,7 @@ class AssistantConfigurationTest {
     void selectedProviderWithoutApiKeyReturnsUnavailableError() {
         LlmPort llm = configuration.llmPort(
                 objectMapper,
+                CircuitBreaker.ofDefaults("llm"),
                 "mistral",
                 "https://generativelanguage.googleapis.com/v1beta/openai",
                 "/v1/chat/completions",
@@ -128,6 +132,7 @@ class AssistantConfigurationTest {
         try {
             LlmPort llm = configuration.llmPort(
                     objectMapper,
+                    CircuitBreaker.ofDefaults("llm"),
                     "openai",
                     "https://generativelanguage.googleapis.com/v1beta/openai",
                     "/v1/chat/completions",

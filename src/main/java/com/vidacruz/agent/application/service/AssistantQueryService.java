@@ -7,6 +7,8 @@ import com.vidacruz.agent.application.port.out.ProtocolRetrievalPort;
 import com.vidacruz.agent.domain.model.AssistantAnswer;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import com.vidacruz.agent.domain.model.SourceCitation;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
@@ -19,12 +21,14 @@ public class AssistantQueryService implements AskAssistantUseCase {
     private final ProtocolRetrievalPort retriever;
     private final String language;
     private final int resultLimit;
+    private final MeterRegistry meterRegistry;
 
     public AssistantQueryService(
             LlmPort llm,
             ProtocolRetrievalPort retriever,
             String language,
-            int resultLimit) {
+            int resultLimit,
+            MeterRegistry meterRegistry) {
         if (resultLimit < 1) {
             throw new IllegalArgumentException("resultLimit debe ser positivo");
         }
@@ -32,6 +36,7 @@ public class AssistantQueryService implements AskAssistantUseCase {
         this.retriever = retriever;
         this.language = language;
         this.resultLimit = resultLimit;
+        this.meterRegistry = meterRegistry;
     }
 
     @Override
@@ -52,7 +57,7 @@ public class AssistantQueryService implements AskAssistantUseCase {
                             .distinct()
                             .toList();
 
-                    return llm.generateAnswer(question, evidence, language)
+                    return timed("generate_answer", llm.generateAnswer(question, evidence, language))
                             .switchIfEmpty(Mono.error(new LlmUnavailableException(
                                     "El proveedor de IA devolvió una respuesta vacía")))
                             .flatMap(answer -> {
@@ -60,7 +65,7 @@ public class AssistantQueryService implements AskAssistantUseCase {
                                 if (NO_PROTOCOL_MESSAGE.equals(normalizedAnswer)) {
                                     return Mono.just(new AssistantAnswer(NO_PROTOCOL_MESSAGE, List.of()));
                                 }
-                                return llm.verifyAnswer(question, normalizedAnswer, evidence)
+                                return timed("verify_answer", llm.verifyAnswer(question, normalizedAnswer, evidence))
                                         .switchIfEmpty(Mono.error(new LlmUnavailableException(
                                                 "El proveedor de IA no devolvió resultado de verificación")))
                                         .map(verification -> verification.allClaimsSupported()
@@ -75,6 +80,17 @@ public class AssistantQueryService implements AskAssistantUseCase {
                                     ? error
                                     : new LlmUnavailableException("El proveedor de IA no está disponible", error));
                 });
+    }
+
+    private <T> Mono<T> timed(String operation, Mono<T> result) {
+        return Mono.defer(() -> {
+            Timer.Sample sample = Timer.start(meterRegistry);
+            return result.doFinally(signal -> sample.stop(Timer.builder("vidacruz.llm.latency")
+                    .description("Latency of LLM answer and verification operations")
+                    .tag("operation", operation)
+                    .tag("outcome", signal == reactor.core.publisher.SignalType.ON_ERROR ? "error" : "success")
+                    .register(meterRegistry)));
+        });
     }
 
     private String cleanAnswer(String answer) {

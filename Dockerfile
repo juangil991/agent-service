@@ -1,4 +1,4 @@
-FROM gradle:8.10.2-jdk17 AS build
+FROM gradle:8.10.2-jdk21 AS build
 
 WORKDIR /workspace
 COPY gradlew settings.gradle build.gradle ./
@@ -7,7 +7,7 @@ RUN chmod +x gradlew
 COPY src ./src
 RUN ./gradlew --no-daemon clean bootJar
 
-FROM eclipse-temurin:17-jre-jammy
+FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 RUN apt-get update \

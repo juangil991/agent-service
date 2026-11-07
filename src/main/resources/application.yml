@@ -1,6 +1,8 @@
 spring:
   application:
     name: vidacruz-agent
+  reactor:
+    context-propagation: auto
   r2dbc:
     url: ${AGENT_R2DBC_URL:r2dbc:postgresql://localhost:5433/vidacruz_agent}
     username: ${AGENT_DB_USERNAME:vidacruz_agent}
@@ -22,11 +24,16 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        include: health,prometheus
   endpoint:
     health:
       probes:
         enabled: true
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState
 
 app:
   kafka:
@@ -53,6 +60,11 @@ app:
       enabled: ${PROTOCOL_INGESTION_ENABLED:true}
     llm:
       provider: ${ASSISTANT_LLM_PROVIDER:google-ai-studio}
+      circuit-breaker:
+        failure-window-size: ${LLM_CIRCUIT_BREAKER_FAILURE_WINDOW_SIZE:5}
+        failure-rate-threshold: ${LLM_CIRCUIT_BREAKER_FAILURE_RATE_THRESHOLD:100}
+        open-state-wait-duration: ${LLM_CIRCUIT_BREAKER_OPEN_STATE_WAIT_DURATION:30s}
+        permitted-calls-in-half-open-state: ${LLM_CIRCUIT_BREAKER_HALF_OPEN_CALLS:1}
       providers:
         google-ai-studio:
           base-url: ${GOOGLE_AI_STUDIO_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai}

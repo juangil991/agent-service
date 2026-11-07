@@ -29,6 +29,7 @@ class AssistantControllerTest {
     void setUp() {
         client = WebTestClient.bindToController(new AssistantController(askAssistant, getUrgencyStatus))
                 .controllerAdvice(new ApiExceptionHandler())
+                .webFilter(new CorrelationIdWebFilter())
                 .build();
     }
 
@@ -73,7 +74,8 @@ class AssistantControllerTest {
                 .exchange()
                 .expectStatus().isEqualTo(503)
                 .expectBody()
-                .jsonPath("$.mensaje").isEqualTo("Servicio de asistente no disponible temporalmente");
+                .jsonPath("$.mensaje").isEqualTo("Servicio de asistente no disponible temporalmente")
+                .jsonPath("$.detalle").isEqualTo("downstream");
     }
 
     @Test
@@ -93,6 +95,30 @@ class AssistantControllerTest {
                 .jsonPath("$.pacientesActivosPorNivel.CRITICO").isEqualTo(2)
                 .jsonPath("$.pacientesActivosPorNivel.URGENTE").isEqualTo(1)
                 .jsonPath("$.pacientesActivosPorNivel.NO_URGENTE").isEqualTo(3);
+    }
+
+    @Test
+    void suppliedCorrelationIdIsReturnedInResponse() {
+        when(getUrgencyStatus.getActiveCounts()).thenReturn(Mono.just(Map.of()));
+
+        client.get()
+                .uri("/asistente/estado-urgencias")
+                .header(CorrelationIdWebFilter.HEADER_NAME, "trace-123")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueEquals(CorrelationIdWebFilter.HEADER_NAME, "trace-123");
+    }
+
+    @Test
+    void missingCorrelationIdIsGeneratedAndReturned() {
+        when(getUrgencyStatus.getActiveCounts()).thenReturn(Mono.just(Map.of()));
+
+        client.get()
+                .uri("/asistente/estado-urgencias")
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().valueMatches(CorrelationIdWebFilter.HEADER_NAME,
+                        "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
     }
 }
 

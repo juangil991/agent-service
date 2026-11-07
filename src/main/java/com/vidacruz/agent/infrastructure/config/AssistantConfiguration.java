@@ -9,9 +9,14 @@ import com.vidacruz.agent.application.service.AssistantQueryService;
 import com.vidacruz.agent.domain.model.AnswerVerification;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import com.vidacruz.agent.domain.service.StructureBasedChunker;
+import com.vidacruz.agent.infrastructure.adapter.out.llm.CircuitBreakingLlmAdapter;
 import com.vidacruz.agent.infrastructure.adapter.out.llm.SpringAiOpenAiCompatibleLlmAdapter;
 import com.vidacruz.agent.infrastructure.adapter.out.llm.StubLlmAdapter;
+import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.observation.ObservationRegistry;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
+import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatModel;
@@ -23,6 +28,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.retry.support.RetryTemplate;
 import reactor.core.publisher.Mono;
 
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -38,8 +44,24 @@ public class AssistantConfiguration {
     }
 
     @Bean
+    CircuitBreaker llmCircuitBreaker(
+            @Value("${app.assistant.llm.circuit-breaker.failure-window-size:5}") int failureWindowSize,
+            @Value("${app.assistant.llm.circuit-breaker.failure-rate-threshold:100}") float failureRateThreshold,
+            @Value("${app.assistant.llm.circuit-breaker.open-state-wait-duration:30s}") Duration openStateWaitDuration,
+            @Value("${app.assistant.llm.circuit-breaker.permitted-calls-in-half-open-state:1}") int permittedCallsInHalfOpenState) {
+        CircuitBreakerConfig config = CircuitBreakerConfig.custom()
+                .slidingWindow(failureWindowSize, failureWindowSize, SlidingWindowType.COUNT_BASED)
+                .failureRateThreshold(failureRateThreshold)
+                .waitDurationInOpenState(openStateWaitDuration)
+                .permittedNumberOfCallsInHalfOpenState(permittedCallsInHalfOpenState)
+                .build();
+        return CircuitBreaker.of("llm", config);
+    }
+
+    @Bean
     LlmPort llmPort(
             ObjectMapper objectMapper,
+            CircuitBreaker llmCircuitBreaker,
             @Value("${app.assistant.llm.provider:google-ai-studio}") String provider,
             @Value("${app.assistant.llm.providers.google-ai-studio.base-url:https://generativelanguage.googleapis.com/v1beta/openai}") String googleBaseUrl,
             @Value("${app.assistant.llm.providers.google-ai-studio.completions-path:/v1/chat/completions}") String googleCompletionsPath,
@@ -107,20 +129,22 @@ public class AssistantConfiguration {
                 RetryTemplate.builder().maxAttempts(1).build(),
                 ObservationRegistry.NOOP);
 
-        return new SpringAiOpenAiCompatibleLlmAdapter(
+        LlmPort providerAdapter = new SpringAiOpenAiCompatibleLlmAdapter(
                 ChatClient.builder(chatModel).build(),
                 selected.displayName(),
                 selected.apiKey(),
                 objectMapper);
+        return new CircuitBreakingLlmAdapter(providerAdapter, llmCircuitBreaker);
     }
 
     @Bean
     AskAssistantUseCase askAssistantUseCase(
             LlmPort llm,
             ProtocolRetrievalPort retriever,
+            MeterRegistry meterRegistry,
             @Value("${app.assistant.language:es}") String language,
             @Value("${app.assistant.retrieval.result-limit:3}") int resultLimit) {
-        return new AssistantQueryService(llm, retriever, language, resultLimit);
+        return new AssistantQueryService(llm, retriever, language, resultLimit, meterRegistry);
     }
 
     private LlmPort unavailablePort(String message) {

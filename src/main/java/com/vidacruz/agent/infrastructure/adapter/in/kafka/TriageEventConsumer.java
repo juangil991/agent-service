@@ -2,7 +2,9 @@ package com.vidacruz.agent.infrastructure.adapter.in.kafka;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vidacruz.agent.application.port.in.ProjectTriageEventUseCase;
+import com.vidacruz.agent.infrastructure.adapter.in.rest.CorrelationIdWebFilter;
 import jakarta.annotation.PreDestroy;
+import net.logstash.logback.argument.StructuredArguments;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -64,6 +66,19 @@ public class TriageEventConsumer {
 
     private Mono<Void> project(String json) {
         return Mono.fromCallable(() -> objectMapper.readValue(json, TriageEventMessage.class))
-                .flatMap(message -> projectEvent.project(message.toDomain()));
+                .flatMap(message -> {
+                    logger.info(
+                            "Triage event received",
+                            StructuredArguments.keyValue("correlationId", message.correlationId()),
+                            StructuredArguments.keyValue("eventType", message.eventType()));
+                    return projectEvent.project(message.toDomain())
+                            .contextWrite(context -> message.correlationId() == null
+                                    ? context
+                                    : context.put(CorrelationIdWebFilter.CONTEXT_KEY, message.correlationId()))
+                            .doOnError(error -> logger.error(
+                                    "Triage event projection failed",
+                                    StructuredArguments.keyValue("correlationId", message.correlationId()),
+                                    error));
+                });
     }
 }

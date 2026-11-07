@@ -8,7 +8,12 @@ import com.vidacruz.agent.domain.model.TriageLevel;
 import java.util.UUID;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
-record TriageEventMessage(UUID eventId, String eventType, UUID patientId, Payload payload) {
+record TriageEventMessage(
+        UUID eventId,
+        String eventType,
+        String correlationId,
+        UUID patientId,
+        Payload payload) {
 
     TriageEvent toDomain() {
         return new TriageEvent(

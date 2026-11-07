@@ -6,6 +6,7 @@ import com.vidacruz.agent.application.port.out.ProtocolRetrievalPort;
 import com.vidacruz.agent.domain.model.AnswerVerification;
 import com.vidacruz.agent.domain.model.AssistantAnswer;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -23,8 +24,9 @@ class AssistantQueryServiceTest {
 
     private final LlmPort llm = mock(LlmPort.class);
     private final ProtocolRetrievalPort retriever = mock(ProtocolRetrievalPort.class);
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final AssistantQueryService service = new AssistantQueryService(
-            llm, retriever, "es", 3);
+            llm, retriever, "es", 3, meterRegistry);
 
     @Test
     void noMatchReturnsAbstentionWithoutCallingLlm() {
@@ -62,6 +64,17 @@ class AssistantQueryServiceTest {
                     assertThat(answer.fuentes().get(0).protocolo()).isEqualTo("PROTO-002");
                 })
                 .verifyComplete();
+
+        assertThat(meterRegistry.get("vidacruz.llm.latency")
+                .tag("operation", "generate_answer")
+                .tag("outcome", "success")
+                .timer()
+                .count()).isEqualTo(1);
+        assertThat(meterRegistry.get("vidacruz.llm.latency")
+                .tag("operation", "verify_answer")
+                .tag("outcome", "success")
+                .timer()
+                .count()).isEqualTo(1);
     }
 
     @Test

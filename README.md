@@ -4,7 +4,7 @@ Servicio reactivo para RF-04: `POST /asistente/consulta` con recuperación híbr
 
 ## Requisitos
 
-- JDK 17 o superior.
+- JDK 21 o superior.
 - API key de Google AI Studio para modo integrado:
   - `GOOGLE_AI_STUDIO_API_KEY`
 - API key de Voyage AI para la consulta e ingesta RAG:
@@ -122,6 +122,9 @@ Proveedor OpenAI:
 
 Si falta API key o el proveedor no está disponible, el endpoint devuelve `503 Service Unavailable`.
 Cada consulta hace un solo intento al proveedor para que sus respuestas de indisponibilidad no queden demoradas por los reintentos internos de Spring AI; el cliente HTTP recibe el `503` explícito y puede reintentar después.
+El circuit breaker del LLM se abre cuando fallan las últimas cinco llamadas, rechaza llamadas mientras está abierto y permite una llamada de prueba tras 30 segundos. Las consultas rechazadas mantienen el mismo contrato HTTP `503` (`mensaje` y `detalle`), sin devolver respuestas clínicas parciales.
+
+Puedes ajustar la política con `LLM_CIRCUIT_BREAKER_FAILURE_WINDOW_SIZE` (default: `5`), `LLM_CIRCUIT_BREAKER_FAILURE_RATE_THRESHOLD` (default: `100`), `LLM_CIRCUIT_BREAKER_OPEN_STATE_WAIT_DURATION` (default: `30s`) y `LLM_CIRCUIT_BREAKER_HALF_OPEN_CALLS` (default: `1`).
 
 ## Probar
 
