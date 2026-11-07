@@ -2,8 +2,10 @@ package com.vidacruz.agent.infrastructure.adapter.in.rest;
 
 import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.in.AskAssistantUseCase;
+import com.vidacruz.agent.application.port.in.GetUrgencyStatusUseCase;
 import com.vidacruz.agent.domain.model.AssistantAnswer;
 import com.vidacruz.agent.domain.model.SourceCitation;
+import com.vidacruz.agent.domain.model.TriageLevel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -11,6 +13,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import reactor.core.publisher.Mono;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -19,11 +22,12 @@ import static org.mockito.Mockito.when;
 class AssistantControllerTest {
 
     private final AskAssistantUseCase askAssistant = mock(AskAssistantUseCase.class);
+    private final GetUrgencyStatusUseCase getUrgencyStatus = mock(GetUrgencyStatusUseCase.class);
     private WebTestClient client;
 
     @BeforeEach
     void setUp() {
-        client = WebTestClient.bindToController(new AssistantController(askAssistant))
+        client = WebTestClient.bindToController(new AssistantController(askAssistant, getUrgencyStatus))
                 .controllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -70,6 +74,25 @@ class AssistantControllerTest {
                 .expectStatus().isEqualTo(503)
                 .expectBody()
                 .jsonPath("$.mensaje").isEqualTo("Servicio de asistente no disponible temporalmente");
+    }
+
+    @Test
+    void urgencyStatusReturnsActiveCountsByTriageLevel() {
+        when(getUrgencyStatus.getActiveCounts()).thenReturn(Mono.just(Map.of(
+                TriageLevel.CRITICO, 2L,
+                TriageLevel.URGENTE, 1L,
+                TriageLevel.URGENTE_2, 0L,
+                TriageLevel.NO_URGENTE, 3L,
+                TriageLevel.NO_URGENTE_2, 0L)));
+
+        client.get()
+                .uri("/asistente/estado-urgencias")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.pacientesActivosPorNivel.CRITICO").isEqualTo(2)
+                .jsonPath("$.pacientesActivosPorNivel.URGENTE").isEqualTo(1)
+                .jsonPath("$.pacientesActivosPorNivel.NO_URGENTE").isEqualTo(3);
     }
 }
 

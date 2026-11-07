@@ -1,11 +1,22 @@
 spring:
   application:
     name: vidacruz-agent
+  r2dbc:
+    url: ${AGENT_R2DBC_URL:r2dbc:postgresql://localhost:5433/vidacruz_agent}
+    username: ${AGENT_DB_USERNAME:vidacruz_agent}
+    password: ${AGENT_DB_PASSWORD:change-me-for-local-development}
+  sql:
+    init:
+      mode: always
   ai:
     model:
       chat: ${SPRING_AI_MODEL_CHAT:none}
     openai:
       api-key: ${SPRING_AI_OPENAI_API_KEY:dummy-key-for-local-startup}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 management:
   endpoints:
@@ -18,8 +29,28 @@ management:
         enabled: true
 
 app:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    topic: ${KAFKA_TRIAGE_TOPIC:triaje.eventos}
+    consumer:
+      enabled: ${KAFKA_CONSUMER_ENABLED:true}
+      group-id: ${KAFKA_TRIAGE_CONSUMER_GROUP:vidacruz-agent-urgencias}
   assistant:
     language: ${ASSISTANT_LANGUAGE:es}
+    protocols:
+      directory: ${PROTOCOLS_DIRECTORY:./protocols}
+      chunk-max-characters: ${PROTOCOL_CHUNK_MAX_CHARACTERS:3000}
+    embeddings:
+      base-url: ${VOYAGE_BASE_URL:https://api.voyageai.com/v1}
+      api-key: ${VOYAGE_API_KEY:}
+      model: ${VOYAGE_MODEL:voyage-4}
+    retrieval:
+      candidate-limit: ${RAG_CANDIDATE_LIMIT:20}
+      result-limit: ${RAG_RESULT_LIMIT:3}
+      rrf-k: ${RAG_RRF_K:60}
+      max-cosine-distance: ${RAG_MAX_COSINE_DISTANCE:0.55}
+    ingestion:
+      enabled: ${PROTOCOL_INGESTION_ENABLED:true}
     llm:
       provider: ${ASSISTANT_LLM_PROVIDER:google-ai-studio}
       providers:

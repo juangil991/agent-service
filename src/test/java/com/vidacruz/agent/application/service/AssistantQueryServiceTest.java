@@ -2,10 +2,9 @@ package com.vidacruz.agent.application.service;
 
 import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.out.LlmPort;
-import com.vidacruz.agent.application.port.out.ProtocolCorpusPort;
+import com.vidacruz.agent.application.port.out.ProtocolRetrievalPort;
 import com.vidacruz.agent.domain.model.AssistantAnswer;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
-import com.vidacruz.agent.domain.service.ProtocolRetriever;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Mono;
 import reactor.test.StepVerifier;
@@ -20,14 +19,14 @@ import static org.mockito.Mockito.when;
 class AssistantQueryServiceTest {
 
     private final LlmPort llm = mock(LlmPort.class);
-    private final ProtocolCorpusPort corpus = mock(ProtocolCorpusPort.class);
+    private final ProtocolRetrievalPort retriever = mock(ProtocolRetrievalPort.class);
     private final AssistantQueryService service = new AssistantQueryService(
-            llm, corpus, new ProtocolRetriever(), "es");
+            llm, retriever, "es", 3);
 
     @Test
     void noMatchReturnsAbstentionWithoutCallingLlm() {
-        when(corpus.allChunks()).thenReturn(List.of(
-                new ProtocolChunk("PROTO-001", "Medidas iniciales", "Reconfirmar la presión tras 5 minutos de reposo.")));
+        when(retriever.retrieve("Tratamiento de primera línea para diabetes tipo 2", 3))
+                .thenReturn(Mono.just(List.of()));
 
         StepVerifier.create(service.ask("Tratamiento de primera línea para diabetes tipo 2"))
                 .assertNext(answer -> {
@@ -43,7 +42,8 @@ class AssistantQueryServiceTest {
     void matchedEvidenceReturnsAnswerWithSources() {
         List<ProtocolChunk> evidence = List.of(
                 new ProtocolChunk("PROTO-002", "Acciones iniciales", "En sepsis, administrar antibiótico de amplio espectro en la primera hora."));
-        when(corpus.allChunks()).thenReturn(evidence);
+        when(retriever.retrieve("¿Cuándo se administra el primer antibiótico en sepsis?", 3))
+                .thenReturn(Mono.just(evidence));
         when(llm.generateAnswer(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq("es")))
                 .thenReturn(Mono.just("Se recomienda antibiótico en la primera hora."));
 
@@ -60,7 +60,8 @@ class AssistantQueryServiceTest {
     void llmFailureBubblesAsUnavailable() {
         List<ProtocolChunk> evidence = List.of(
                 new ProtocolChunk("PROTO-002", "Acciones iniciales", "En sepsis, administrar antibiótico de amplio espectro en la primera hora."));
-        when(corpus.allChunks()).thenReturn(evidence);
+        when(retriever.retrieve("¿Cuándo se administra el primer antibiótico en sepsis?", 3))
+                .thenReturn(Mono.just(evidence));
         when(llm.generateAnswer(org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.anyList(), org.mockito.ArgumentMatchers.eq("es")))
                 .thenReturn(Mono.error(new RuntimeException("upstream failed")));
 

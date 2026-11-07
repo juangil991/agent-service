@@ -1,24 +1,76 @@
-# VidaCruz Agent (RF-04A)
+# VidaCruz Agent (RF-04)
 
-Servicio reactivo para la Parte A de RF-04: `POST /asistente/consulta` con recuperación sobre corpus clínico, respuesta con fuentes e integración LLM mediante **Spring AI**.
+Servicio reactivo para RF-04: `POST /asistente/consulta` con recuperación híbrida (Voyage AI, pgvector y BM25 con RRF), respuesta con fuentes e integración LLM mediante **Spring AI**; y `GET /asistente/estado-urgencias`, una proyección eventual de los eventos de Triaje consumidos desde Kafka y persistidos en Redis.
 
 ## Requisitos
 
 - JDK 17 o superior.
 - API key de Google AI Studio para modo integrado:
   - `GOOGLE_AI_STUDIO_API_KEY`
+- API key de Voyage AI para la consulta e ingesta RAG:
+  - `VOYAGE_API_KEY`
+- PostgreSQL separado para el agente, con pgvector y búsqueda BM25. Compose lo levanta con ParadeDB.
 
 ## Ejecutar
 
-Desde `vidacruz-agent`:
+Para levantar Agent, Triaje y sus dependencias, ejecuta desde la raíz `VidaCruz`:
+
+```powershell
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+docker compose up --build -d
+docker compose run --rm agent --spring.main.web-application-type=none --app.kafka.consumer.enabled=false --app.assistant.ingestion.enabled=true
+```
+
+La API del Asistente queda en `http://localhost:8081`. Para ejecutar solo el Agent, desde `vidacruz-agent`:
 
 ```powershell
 .\gradlew.bat bootRun
 ```
 
+`bootRun` requiere que PostgreSQL del agente esté disponible (`AGENT_R2DBC_URL`, `AGENT_DB_USERNAME` y `AGENT_DB_PASSWORD`). En Compose, el agente usa una base separada del PostgreSQL de Triaje.
+
+### Ejecutar solo el proyecto del agente con Docker
+
+Desde `vidacruz-agent`, crea `.env` si aún no existe y configura `VOYAGE_API_KEY`. Después inicia los contenedores propios del agente:
+
+```powershell
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
+docker compose up --build -d
+docker compose run --rm agent --spring.main.web-application-type=none --app.kafka.consumer.enabled=false --app.assistant.ingestion.enabled=true
+```
+
+La API queda en `http://localhost:8082` por defecto. Este Compose levanta solo el agente, ParadeDB (PostgreSQL con pgvector/BM25), Kafka con el tópico requerido y Redis; no inicia Triaje. El proveedor LLM por defecto es `stub`; puedes seleccionar Google AI Studio y configurar su API key desde `.env`. Los puertos de host (8082, 5434) pueden cambiarse en ese archivo.
+
+### Ingesta offline de protocolos
+
+Coloca los protocolos aprobados en Markdown en `vidacruz-agent/protocols` (o configura `PROTOCOLS_DIRECTORY`). Nombra cada archivo con su identificador, por ejemplo `PROTO-004.md`; usa un encabezado `#` para el título y encabezados Markdown para las secciones. El corpus inicial de tres protocolos incluido en el agente también se procesa.
+
+La ingesta por encabezado/sección conserva la jerarquía (por ejemplo, `Criterios > Adultos`) y solo divide secciones largas en límites de párrafo/oración, hasta `PROTOCOL_CHUNK_MAX_CHARACTERS`. Genera embeddings de documento con el modelo Voyage AI configurado y hace upsert transaccional; los documentos cuyo hash no cambió no vuelven a generar embeddings.
+
+Con Compose y `VOYAGE_API_KEY` definido en `.env`, ejecuta desde la raíz:
+
+```powershell
+docker compose up -d agent-postgres
+docker compose run --build --rm agent --spring.main.web-application-type=none --app.kafka.consumer.enabled=false --app.assistant.ingestion.enabled=true
+```
+
+Para ejecución local desde `vidacruz-agent`, configura la URL/credenciales R2DBC y `VOYAGE_API_KEY`, inicia la base ParadeDB y ejecuta:
+
+```powershell
+.\gradlew.bat bootRun --args="--spring.main.web-application-type=none --app.kafka.consumer.enabled=false --app.assistant.ingestion.enabled=true"
+```
+
+La consulta genera un embedding de tipo `query`, combina los rankings BM25 y vectorial mediante RRF y solo conserva vecinos vectoriales dentro de `RAG_MAX_COSINE_DISTANCE`. Si no hay evidencia elegible, conserva la respuesta de abstención existente.
+
 Endpoint:
 
-- `POST http://localhost:8080/asistente/consulta`
+- Compose: `POST http://localhost:8081/asistente/consulta`
+- `GET http://localhost:8081/asistente/estado-urgencias` (con Compose)
+- Standalone `bootRun`: `POST http://localhost:8080/asistente/consulta`
+
+La respuesta del estado contiene `pacientesActivosPorNivel` con todos los niveles. `REGISTRADO` y `EN_CONSULTA` cuentan como activos; `ALTA` no. El estado se actualiza asíncronamente a partir de `triaje.eventos`, sin llamadas a la API de Triaje. La deduplicación de `eventId` y la actualización de paciente/conteos se ejecutan en una operación atómica de Redis.
+
+Para ejecución independiente con `bootRun`, configura `KAFKA_BOOTSTRAP_SERVERS`, `REDIS_HOST`/`REDIS_PORT` y el `KAFKA_TRIAGE_CONSUMER_GROUP`; el consumidor se puede deshabilitar con `KAFKA_CONSUMER_ENABLED=false`.
 
 Payload (`Content-Type: application/json`):
 
@@ -32,6 +84,11 @@ Payload (`Content-Type: application/json`):
 
 - `ASSISTANT_LLM_PROVIDER` (`google-ai-studio`, `groqcloud`, `mistral`, `openai` o `stub`)
 - `ASSISTANT_LANGUAGE` (default: `es`)
+- `VOYAGE_API_KEY` (requerida para RAG); `VOYAGE_MODEL` (default: `voyage-4`, 1024 dimensiones)
+- `AGENT_R2DBC_URL`, `AGENT_DB_USERNAME`, `AGENT_DB_PASSWORD` (conexión al almacén PostgreSQL del agente)
+- `PROTOCOLS_DIRECTORY` (default: `./protocols`)
+- `PROTOCOL_CHUNK_MAX_CHARACTERS` (default: `3000`)
+- `RAG_CANDIDATE_LIMIT` (default: `20`), `RAG_RESULT_LIMIT` (default: `3`), `RAG_RRF_K` (default: `60`) y `RAG_MAX_COSINE_DISTANCE` (default: `0.55`)
 
 Compatibilidad mantenida para Google AI Studio:
 

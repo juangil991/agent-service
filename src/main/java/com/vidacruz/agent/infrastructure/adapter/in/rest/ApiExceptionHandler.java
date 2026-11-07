@@ -1,6 +1,7 @@
 package com.vidacruz.agent.infrastructure.adapter.in.rest;
 
 import com.vidacruz.agent.application.exception.LlmUnavailableException;
+import com.vidacruz.agent.application.exception.RagUnavailableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -18,6 +19,13 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(LlmUnavailableException.class)
     ResponseEntity<Map<String, String>> llmUnavailable(LlmUnavailableException exception) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                "mensaje", "Servicio de asistente no disponible temporalmente",
+                "detalle", exception.getMessage()));
+    }
+
+    @ExceptionHandler(RagUnavailableException.class)
+    ResponseEntity<Map<String, String>> ragUnavailable(RagUnavailableException exception) {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
                 "mensaje", "Servicio de asistente no disponible temporalmente",
                 "detalle", exception.getMessage()));

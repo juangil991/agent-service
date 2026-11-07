@@ -2,9 +2,9 @@ package com.vidacruz.agent.infrastructure.config;
 
 import com.vidacruz.agent.application.port.in.AskAssistantUseCase;
 import com.vidacruz.agent.application.port.out.LlmPort;
-import com.vidacruz.agent.application.port.out.ProtocolCorpusPort;
+import com.vidacruz.agent.application.port.out.ProtocolRetrievalPort;
 import com.vidacruz.agent.application.service.AssistantQueryService;
-import com.vidacruz.agent.domain.service.ProtocolRetriever;
+import com.vidacruz.agent.domain.service.StructureBasedChunker;
 import com.vidacruz.agent.infrastructure.adapter.out.llm.SpringAiOpenAiCompatibleLlmAdapter;
 import com.vidacruz.agent.infrastructure.adapter.out.llm.StubLlmAdapter;
 import io.micrometer.observation.ObservationRegistry;
@@ -27,8 +27,9 @@ import java.util.Map;
 public class AssistantConfiguration {
 
     @Bean
-    ProtocolRetriever protocolRetriever() {
-        return new ProtocolRetriever();
+    StructureBasedChunker structureBasedChunker(
+            @Value("${app.assistant.protocols.chunk-max-characters:3000}") int maxCharacters) {
+        return new StructureBasedChunker(maxCharacters);
     }
 
     @Bean
@@ -109,10 +110,10 @@ public class AssistantConfiguration {
     @Bean
     AskAssistantUseCase askAssistantUseCase(
             LlmPort llm,
-            ProtocolCorpusPort corpus,
-            ProtocolRetriever retriever,
-            @Value("${app.assistant.language:es}") String language) {
-        return new AssistantQueryService(llm, corpus, retriever, language);
+            ProtocolRetrievalPort retriever,
+            @Value("${app.assistant.language:es}") String language,
+            @Value("${app.assistant.retrieval.result-limit:3}") int resultLimit) {
+        return new AssistantQueryService(llm, retriever, language, resultLimit);
     }
 
     private LlmPort unavailablePort(String message) {
