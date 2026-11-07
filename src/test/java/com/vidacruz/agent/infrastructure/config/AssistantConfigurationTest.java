@@ -20,7 +20,7 @@ class AssistantConfigurationTest {
 
     private final AssistantConfiguration configuration = new AssistantConfiguration();
     private static final List<ProtocolChunk> EVIDENCE = List.of(
-            new ProtocolChunk("PROTO-001", "Sección", "Contenido"));
+            new ProtocolChunk("chunk-001", "PROTO-001", "Protocolo de prueba", "Sección", "Contenido", 0.02));
 
     @Test
     void returnsStubAdapterWhenStubProviderIsSelected() {
@@ -69,7 +69,7 @@ class AssistantConfigurationTest {
                 "gpt-4o-mini",
                 "openai-key");
 
-        StepVerifier.create(llm.generateAnswer("pregunta", EVIDENCE, "es"))
+        StepVerifier.create(llm.selectEvidence("pregunta", EVIDENCE, "es"))
                 .expectErrorSatisfies(error -> {
                     assertThat(error).isInstanceOf(LlmUnavailableException.class);
                     assertThat(error.getMessage()).contains("no soportado");
@@ -99,7 +99,7 @@ class AssistantConfigurationTest {
                 "gpt-4o-mini",
                 "openai-key");
 
-        StepVerifier.create(llm.generateAnswer("pregunta", EVIDENCE, "es"))
+        StepVerifier.create(llm.selectEvidence("pregunta", EVIDENCE, "es"))
                 .expectErrorSatisfies(error -> {
                     assertThat(error).isInstanceOf(LlmUnavailableException.class);
                     assertThat(error.getMessage()).contains("Mistral");
@@ -145,7 +145,7 @@ class AssistantConfigurationTest {
                     "gpt-4o-mini",
                     "test-key");
 
-            StepVerifier.create(llm.generateAnswer("pregunta", EVIDENCE, "es"))
+            StepVerifier.create(llm.selectEvidence("pregunta", EVIDENCE, "es"))
                     .expectError(LlmUnavailableException.class)
                     .verify(java.time.Duration.ofSeconds(5));
 

@@ -1,82 +1,69 @@
 package com.vidacruz.agent.infrastructure.adapter.out.llm;
 
+import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.evaluation.EvaluationRequest;
-import org.springframework.ai.evaluation.EvaluationResponse;
-import org.springframework.ai.evaluation.Evaluator;
 import reactor.test.StepVerifier;
 
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class SpringAiOpenAiCompatibleLlmAdapterTest {
 
-    private static final List<ProtocolChunk> EVIDENCE = List.of(
-            new ProtocolChunk("PROTO-001", "Sección de evaluación", "Contenido de respaldo"));
+    private static final String SELECTION =
+            "{\"extractos\":[{\"chunkId\":\"chunk-001\",\"texto\":\"Contenido de respaldo\"}]}";
+    private static final ProtocolChunk EVIDENCE = new ProtocolChunk(
+            "chunk-001",
+            "PROTO-001",
+            "Protocolo de prueba",
+            "Sección de evaluación",
+            "Contenido de respaldo",
+            0.02);
 
     @Test
-    void evaluatesQuestionAnswerAndRetrievedContextWithBothEvaluators() {
-        AtomicReference<EvaluationRequest> relevancyRequest = new AtomicReference<>();
-        AtomicReference<EvaluationRequest> factCheckingRequest = new AtomicReference<>();
-        Evaluator relevancy = request -> {
-            relevancyRequest.set(request);
-            return response(true);
-        };
-        Evaluator factChecking = request -> {
-            factCheckingRequest.set(request);
-            return response(true);
-        };
-        SpringAiOpenAiCompatibleLlmAdapter adapter = adapter(relevancy, factChecking);
-
-        StepVerifier.create(adapter.evaluateAnswer("pregunta clínica", "respuesta clínica", EVIDENCE))
-                .expectNext(true)
-                .verifyComplete();
-
-        assertRequest(relevancyRequest.get());
-        assertRequest(factCheckingRequest.get());
-    }
-
-    @Test
-    void rejectsAnswerWhenEitherEvaluatorFails() {
-        SpringAiOpenAiCompatibleLlmAdapter relevanceFailure = adapter(
-                request -> response(false),
-                request -> response(true));
-        SpringAiOpenAiCompatibleLlmAdapter factCheckFailure = adapter(
-                request -> response(true),
-                request -> response(false));
-
-        StepVerifier.create(relevanceFailure.evaluateAnswer("pregunta", "respuesta", EVIDENCE))
-                .expectNext(false)
-                .verifyComplete();
-        StepVerifier.create(factCheckFailure.evaluateAnswer("pregunta", "respuesta", EVIDENCE))
-                .expectNext(false)
-                .verifyComplete();
-    }
-
-    private SpringAiOpenAiCompatibleLlmAdapter adapter(Evaluator relevancy, Evaluator factChecking) {
-        return new SpringAiOpenAiCompatibleLlmAdapter(
-                mock(ChatClient.class),
+    void asksTheProviderToSelectLiteralExcerptsAsJson() {
+        ChatClient chatClient = mock(ChatClient.class);
+        ChatClient.ChatClientRequestSpec request = mock(ChatClient.ChatClientRequestSpec.class);
+        ChatClient.CallResponseSpec response = mock(ChatClient.CallResponseSpec.class);
+        when(chatClient.prompt()).thenReturn(request);
+        when(request.user(anyString())).thenReturn(request);
+        when(request.call()).thenReturn(response);
+        when(response.content()).thenReturn(SELECTION);
+        SpringAiOpenAiCompatibleLlmAdapter adapter = new SpringAiOpenAiCompatibleLlmAdapter(
+                chatClient,
                 "proveedor de prueba",
-                "test-key",
-                relevancy,
-                factChecking);
+                "test-key");
+
+        StepVerifier.create(adapter.selectEvidence("pregunta clínica", List.of(EVIDENCE), "es"))
+                .expectNext(SELECTION)
+                .verifyComplete();
+
+        org.mockito.ArgumentCaptor<String> prompt = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(request).user(prompt.capture());
+        assertThat(prompt.getValue())
+                .contains("Devuelve exclusivamente JSON")
+                .contains("subcadena exacta")
+                .contains("chunkId=chunk-001")
+                .contains("PROTO-001")
+                .contains("Contenido de respaldo");
     }
 
-    private EvaluationResponse response(boolean pass) {
-        return new EvaluationResponse(pass, 1, "", Map.of());
-    }
+    @Test
+    void doesNotCallProviderWithoutAnApiKey() {
+        ChatClient chatClient = mock(ChatClient.class);
+        SpringAiOpenAiCompatibleLlmAdapter adapter = new SpringAiOpenAiCompatibleLlmAdapter(
+                chatClient,
+                "proveedor de prueba",
+                " ");
 
-    private void assertRequest(EvaluationRequest request) {
-        assertThat(request.getUserText()).isEqualTo("pregunta clínica");
-        assertThat(request.getResponseContent()).isEqualTo("respuesta clínica");
-        assertThat(request.getDataList())
-                .extracting(document -> document.getText())
-                .containsExactly("[PROTO-001 | Sección de evaluación] Contenido de respaldo");
+        StepVerifier.create(adapter.selectEvidence("pregunta", List.of(EVIDENCE), "es"))
+                .expectError(LlmUnavailableException.class)
+                .verify();
     }
 }

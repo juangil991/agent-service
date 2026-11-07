@@ -7,11 +7,6 @@ import java.util.List;
 
 public interface LlmPort {
 
-    Mono<String> generateAnswer(String question, List<ProtocolChunk> evidence, String language);
-
-    Mono<Boolean> evaluateAnswer(
-            String question,
-            String answer,
-            List<ProtocolChunk> evidence);
+    Mono<String> selectEvidence(String question, List<ProtocolChunk> evidence, String language);
 }
 

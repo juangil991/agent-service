@@ -22,74 +22,47 @@ import static org.mockito.Mockito.when;
 class CircuitBreakingLlmAdapterTest {
 
     private static final List<ProtocolChunk> EVIDENCE = List.of(
-            new ProtocolChunk("PROTO-001", "Sección", "Contenido"));
+            new ProtocolChunk("chunk-001", "PROTO-001", "Protocolo de prueba", "Sección", "Contenido", 0.02));
 
     @Test
     void opensAfterFiveFailuresAndRejectsFurtherLlmCallsAsUnavailable() {
         LlmPort provider = mock(LlmPort.class);
-        when(provider.generateAnswer("pregunta", EVIDENCE, "es"))
+        when(provider.selectEvidence("pregunta", EVIDENCE, "es"))
                 .thenReturn(Mono.error(new RuntimeException("upstream failed")));
         CircuitBreaker circuitBreaker = circuitBreaker(Duration.ofSeconds(30));
         CircuitBreakingLlmAdapter adapter = new CircuitBreakingLlmAdapter(provider, circuitBreaker);
 
         for (int attempt = 0; attempt < 5; attempt++) {
-            StepVerifier.create(adapter.generateAnswer("pregunta", EVIDENCE, "es"))
+            StepVerifier.create(adapter.selectEvidence("pregunta", EVIDENCE, "es"))
                     .expectError(RuntimeException.class)
                     .verify();
         }
 
-        StepVerifier.create(adapter.generateAnswer("pregunta", EVIDENCE, "es"))
+        StepVerifier.create(adapter.selectEvidence("pregunta", EVIDENCE, "es"))
                 .expectErrorSatisfies(error -> {
                     assertThat(error).isInstanceOf(LlmUnavailableException.class);
                     assertThat(error.getMessage()).contains("circuito");
                 })
                 .verify();
 
-        verify(provider, times(5)).generateAnswer("pregunta", EVIDENCE, "es");
+        verify(provider, times(5)).selectEvidence("pregunta", EVIDENCE, "es");
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.OPEN);
     }
 
     @Test
-    void successfulHalfOpenProbeClosesCircuitAndAllowsVerification() {
+    void successfulHalfOpenProbeClosesCircuit() {
         LlmPort provider = mock(LlmPort.class);
-        when(provider.generateAnswer("pregunta", EVIDENCE, "es")).thenReturn(Mono.just("respuesta"));
-        when(provider.evaluateAnswer("pregunta", "respuesta", EVIDENCE))
-                .thenReturn(Mono.just(true));
+        when(provider.selectEvidence("pregunta", EVIDENCE, "es")).thenReturn(Mono.just("respuesta"));
         CircuitBreaker circuitBreaker = circuitBreaker(Duration.ofSeconds(30));
         circuitBreaker.transitionToOpenState();
         circuitBreaker.transitionToHalfOpenState();
         CircuitBreakingLlmAdapter adapter = new CircuitBreakingLlmAdapter(provider, circuitBreaker);
 
-        StepVerifier.create(adapter.generateAnswer("pregunta", EVIDENCE, "es"))
+        StepVerifier.create(adapter.selectEvidence("pregunta", EVIDENCE, "es"))
                 .expectNext("respuesta")
                 .verifyComplete();
 
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
-
-        StepVerifier.create(adapter.evaluateAnswer("pregunta", "respuesta", EVIDENCE))
-                .expectNext(true)
-                .verifyComplete();
-    }
-
-    @Test
-    void verificationFailuresAlsoOpenCircuitForGenerationCalls() {
-        LlmPort provider = mock(LlmPort.class);
-        when(provider.evaluateAnswer("pregunta", "respuesta", EVIDENCE))
-                .thenReturn(Mono.error(new RuntimeException("upstream failed")));
-        CircuitBreaker circuitBreaker = circuitBreaker(Duration.ofSeconds(30));
-        CircuitBreakingLlmAdapter adapter = new CircuitBreakingLlmAdapter(provider, circuitBreaker);
-
-        for (int attempt = 0; attempt < 5; attempt++) {
-            StepVerifier.create(adapter.evaluateAnswer("pregunta", "respuesta", EVIDENCE))
-                    .expectError(RuntimeException.class)
-                    .verify();
-        }
-
-        StepVerifier.create(adapter.generateAnswer("pregunta", EVIDENCE, "es"))
-                .expectError(LlmUnavailableException.class)
-                .verify();
-
-        verify(provider, times(5)).evaluateAnswer("pregunta", "respuesta", EVIDENCE);
     }
 
     private CircuitBreaker circuitBreaker(Duration openWaitDuration) {

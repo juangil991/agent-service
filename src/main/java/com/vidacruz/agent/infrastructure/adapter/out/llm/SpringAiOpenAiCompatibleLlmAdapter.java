@@ -4,9 +4,6 @@ import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.out.LlmPort;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.document.Document;
-import org.springframework.ai.evaluation.Evaluator;
-import org.springframework.ai.evaluation.EvaluationRequest;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -18,24 +15,18 @@ public class SpringAiOpenAiCompatibleLlmAdapter implements LlmPort {
     private final ChatClient chatClient;
     private final String providerName;
     private final String apiKey;
-    private final Evaluator relevancyEvaluator;
-    private final Evaluator factCheckingEvaluator;
 
     public SpringAiOpenAiCompatibleLlmAdapter(
             ChatClient chatClient,
             String providerName,
-            String apiKey,
-            Evaluator relevancyEvaluator,
-            Evaluator factCheckingEvaluator) {
+            String apiKey) {
         this.chatClient = chatClient;
         this.providerName = providerName;
         this.apiKey = apiKey == null ? "" : apiKey.trim();
-        this.relevancyEvaluator = relevancyEvaluator;
-        this.factCheckingEvaluator = factCheckingEvaluator;
     }
 
     @Override
-    public Mono<String> generateAnswer(String question, List<ProtocolChunk> evidence, String language) {
+    public Mono<String> selectEvidence(String question, List<ProtocolChunk> evidence, String language) {
         if (apiKey.isBlank()) {
             return Mono.error(new LlmUnavailableException(
                     "El proveedor de IA no está configurado: falta API key para %s".formatted(providerName)));
@@ -44,33 +35,6 @@ public class SpringAiOpenAiCompatibleLlmAdapter implements LlmPort {
         return complete(buildAnswerPrompt(question, evidence, language))
                 .map(this::validateAnswer)
                 .onErrorMap(error -> mapProviderError(error, "obtener respuesta"));
-    }
-
-    @Override
-    public Mono<Boolean> evaluateAnswer(
-            String question,
-            String answer,
-            List<ProtocolChunk> evidence) {
-        if (apiKey.isBlank()) {
-            return Mono.error(new LlmUnavailableException(
-                    "El proveedor de IA no está configurado: falta API key para %s".formatted(providerName)));
-        }
-
-        List<Document> supportingData = evidence.stream()
-                .map(chunk -> new Document("[%s | %s] %s".formatted(
-                        chunk.protocolo(),
-                        chunk.seccion(),
-                        chunk.contenido())))
-                .toList();
-        EvaluationRequest request = new EvaluationRequest(question, supportingData, answer);
-
-        return Mono.zip(
-                        Mono.fromCallable(() -> relevancyEvaluator.evaluate(request).isPass())
-                                .subscribeOn(Schedulers.boundedElastic()),
-                        Mono.fromCallable(() -> factCheckingEvaluator.evaluate(request).isPass())
-                                .subscribeOn(Schedulers.boundedElastic()),
-                        (relevant, factuallySupported) -> relevant && factuallySupported)
-                .onErrorMap(error -> mapProviderError(error, "evaluar la respuesta"));
     }
 
     private Mono<String> complete(String prompt) {
@@ -83,19 +47,26 @@ public class SpringAiOpenAiCompatibleLlmAdapter implements LlmPort {
 
     private String buildAnswerPrompt(String question, List<ProtocolChunk> evidence, String language) {
         String context = evidence.stream()
-                .map(chunk -> String.format(
-                        "[%s | %s] %s",
+                .map(chunk -> """
+                        [chunkId=%s | protocolo=%s | titulo=%s | seccion=%s]
+                        %s
+                        """.formatted(
+                        chunk.chunkId(),
                         chunk.protocolo(),
+                        chunk.titulo(),
                         chunk.seccion(),
                         chunk.contenido()))
                 .collect(Collectors.joining("\n"));
 
         return """
-                Eres un asistente clínico estricto.
-                Responde únicamente con base en el CONTEXTO.
-                No inventes información ni agregues recomendaciones no presentes.
-                Responde en idioma: %s.
-                Si el contexto no alcanza, responde exactamente: "No existe un protocolo disponible para la pregunta."
+                Selecciona únicamente texto literal del CONTEXTO que responda a la pregunta.
+                No redactes, parafrasees, traduzcas, completes ni agregues contenido clínico.
+                Devuelve exclusivamente JSON con esta forma:
+                {"extractos":[{"chunkId":"ID_DEL_FRAGMENTO","texto":"SUBCADENA_LITERAL_DEL_CONTEXTO"}]}
+                Cada extracto debe ser una subcadena exacta del contenido del fragmento indicado.
+                Usa solo chunkId incluidos en el CONTEXTO; no inventes identificadores.
+                Si ningún extracto responde a la pregunta, devuelve exactamente {"extractos":[]}.
+                Conserva el idioma original del texto citado (%s).
 
                 PREGUNTA:
                 %s

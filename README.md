@@ -70,9 +70,11 @@ Para ejecución local desde `vidacruz-agent`, configura la URL/credenciales R2DB
 .\gradlew.bat bootRun --args="--spring.main.web-application-type=none --app.kafka.consumer.enabled=false --app.assistant.ingestion.enabled=true"
 ```
 
-La consulta genera un embedding de tipo `query`, combina los rankings BM25 y vectorial mediante RRF y solo conserva vecinos vectoriales dentro de `RAG_MAX_COSINE_DISTANCE`. Si no hay evidencia elegible, conserva la respuesta de abstención existente.
+La consulta genera un embedding de tipo `query`, combina los rankings BM25 y vectorial mediante RRF y solo conserva vecinos vectoriales dentro de `RAG_MAX_COSINE_DISTANCE`. Además, descarta resultados por debajo de `RAG_MINIMUM_RRF_SCORE` y aplica una comprobación léxica conservadora sobre la pregunta, el título, la sección y el contenido. Si no queda evidencia elegible, responde exactamente `No existe un protocolo disponible para la pregunta.` y devuelve `fuentes: []`.
 
-Cuando existe evidencia, el asistente usa `RelevancyEvaluator` y `FactCheckingEvaluator` de Spring AI para evaluar la respuesta contra la pregunta y los fragmentos recuperados. Solo entrega la respuesta y sus fuentes si ambos evaluadores la aprueban; si alguno la rechaza, devuelve la abstención sin fuentes. Si la evaluación no se puede completar, devuelve `503` en vez de exponer contenido no evaluado. La evaluación semántica con LLM reduce el riesgo de alucinaciones, pero no constituye una garantía matemática.
+El LLM no redacta la respuesta clínica: solo puede seleccionar extractos devolviendo JSON con un `chunkId` y texto literal. El servicio rechaza el resultado completo si el JSON no tiene el formato esperado, el fragmento no pertenece a la recuperación, el texto no es una subcadena exacta de ese fragmento o la fuente no supera la comprobación de relevancia. El servidor construye `respuesta` exclusivamente con los extractos verificados y deriva `fuentes` de los mismos fragmentos; una cita proporcionada por el modelo no se acepta. Si el proveedor no está disponible o devuelve una respuesta vacía, el endpoint devuelve `503`.
+
+La coincidencia literal impide que el LLM agregue o parafrasee contenido clínico que no está en el corpus. El umbral RRF y la comprobación léxica son deliberadamente conservadores: pueden producir abstenciones para preguntas válidas expresadas con sinónimos. Deben recalibrarse y probarse cada vez que cambie el corpus o el modelo de embeddings.
 
 Endpoint:
 
@@ -103,7 +105,7 @@ Payload (`Content-Type: application/json`):
 - `AGENT_R2DBC_URL`, `AGENT_DB_USERNAME`, `AGENT_DB_PASSWORD` (conexión al almacén PostgreSQL del agente)
 - `PROTOCOLS_DIRECTORY` (default: `./protocols`)
 - `PROTOCOL_CHUNK_MAX_CHARACTERS` (default: `3000`)
-- `RAG_CANDIDATE_LIMIT` (default: `20`), `RAG_RESULT_LIMIT` (default: `3`), `RAG_RRF_K` (default: `60`) y `RAG_MAX_COSINE_DISTANCE` (default: `0.55`)
+- `RAG_CANDIDATE_LIMIT` (default: `20`), `RAG_RESULT_LIMIT` (default: `3`), `RAG_RRF_K` (default: `60`), `RAG_MAX_COSINE_DISTANCE` (default: `0.55`) y `RAG_MINIMUM_RRF_SCORE` (default: `0.015`)
 
 Compatibilidad mantenida para Google AI Studio:
 

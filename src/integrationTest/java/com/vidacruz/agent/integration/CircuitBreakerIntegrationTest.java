@@ -81,9 +81,12 @@ class CircuitBreakerIntegrationTest {
                 .build();
         when(retriever.retrieve(anyString(), anyInt()))
                 .thenReturn(Mono.just(List.of(new ProtocolChunk(
+                        "chunk-sepsis",
                         "PROTO-TEST",
+                        "Sepsis, Identificación Temprana",
                         "Evaluación",
-                        "La sepsis requiere antibióticos."))));
+                        "La sepsis requiere antibióticos.",
+                        0.02))));
     }
 
     @Test
@@ -107,7 +110,7 @@ class CircuitBreakerIntegrationTest {
                 .jsonPath("$.respuesta").isEqualTo("La sepsis requiere antibióticos.")
                 .jsonPath("$.fuentes[0].protocolo").isEqualTo("PROTO-TEST");
 
-        assertThat(PROVIDER_REQUESTS).hasValue(5);
+        assertThat(PROVIDER_REQUESTS).hasValue(3);
         assertThat(llmCircuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
     }
 
@@ -116,7 +119,7 @@ class CircuitBreakerIntegrationTest {
                 .uri("/asistente/consulta")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
-                        {"pregunta":"¿Cómo tratar la sepsis?"}
+                        {"pregunta":"¿Cómo tratar la sepsis con antibióticos?"}
                         """)
                 .exchange();
     }
@@ -141,10 +144,9 @@ class CircuitBreakerIntegrationTest {
             return;
         }
 
-        String content = request.contains("Your task is to evaluate if the response for the query")
-                || request.contains("Evaluate whether or not the following claim is supported")
-                ? "yes"
-                : "La sepsis requiere antibióticos.";
+        String content = """
+                {"extractos":[{"chunkId":"chunk-sepsis","texto":"La sepsis requiere antibióticos."}]}
+                """;
         String response = """
                 {
                   "id": "chatcmpl-integration",

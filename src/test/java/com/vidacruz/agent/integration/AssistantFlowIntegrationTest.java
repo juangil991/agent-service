@@ -47,16 +47,19 @@ class AssistantFlowIntegrationTest {
             String question = invocation.getArgument(0);
             List<ProtocolChunk> evidence = question.contains("sepsis")
                     ? List.of(new ProtocolChunk(
+                            "chunk-sepsis",
                             "PROTO-002",
+                            "Sepsis, Identificación Temprana (qSOFA)",
                             "Acciones iniciales",
-                            "En sepsis, administrar antibiótico de amplio espectro en la primera hora."))
+                            "En sepsis, administrar antibiótico de amplio espectro en la primera hora.",
+                            0.02))
                     : List.of();
             return Mono.just(evidence);
         });
-        when(llm.generateAnswer(anyString(), org.mockito.ArgumentMatchers.anyList(), anyString()))
-                    .thenReturn(Mono.just("Según PROTO-002, administrar antibiótico en la primera hora."));
-        when(llm.evaluateAnswer(anyString(), anyString(), org.mockito.ArgumentMatchers.anyList()))
-                    .thenReturn(Mono.just(true));
+        when(llm.selectEvidence(anyString(), org.mockito.ArgumentMatchers.anyList(), anyString()))
+                .thenReturn(Mono.just("""
+                        {"extractos":[{"chunkId":"chunk-sepsis","texto":"En sepsis, administrar antibiótico de amplio espectro en la primera hora."}]}
+                        """));
     }
 
     @Test
@@ -72,8 +75,8 @@ class AssistantFlowIntegrationTest {
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
-                .jsonPath("$.respuesta").value(value -> org.assertj.core.api.Assertions.assertThat((String) value)
-                        .contains("PROTO-002"))
+                .jsonPath("$.respuesta").isEqualTo(
+                        "En sepsis, administrar antibiótico de amplio espectro en la primera hora.")
                 .jsonPath("$.fuentes[0].protocolo").isEqualTo("PROTO-002");
     }
 
@@ -95,9 +98,11 @@ class AssistantFlowIntegrationTest {
     }
 
     @Test
-    void returnsAbstentionWithoutSourcesWhenEvaluationRejectsAnswer() {
-        when(llm.evaluateAnswer(anyString(), anyString(), org.mockito.ArgumentMatchers.anyList()))
-                .thenReturn(Mono.just(false));
+    void returnsAbstentionWithoutSourcesWhenGeneratedTextIsNotInTheCorpus() {
+        when(llm.selectEvidence(anyString(), org.mockito.ArgumentMatchers.anyList(), anyString()))
+                .thenReturn(Mono.just("""
+                        {"extractos":[{"chunkId":"chunk-sepsis","texto":"Administre corticoides para tratar sepsis."}]}
+                        """));
 
         webTestClient.post()
                 .uri("/asistente/consulta")

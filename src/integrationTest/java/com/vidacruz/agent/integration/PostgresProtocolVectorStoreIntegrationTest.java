@@ -95,10 +95,16 @@ class PostgresProtocolVectorStoreIntegrationTest {
                         60,
                         0.55)
                 .block(Duration.ofSeconds(10)))
-                .containsExactly(new ProtocolChunk(
-                        "PROTO-TEST",
-                        "Evaluación",
-                        "La crisis hipertensiva requiere valoración clínica inmediata."));
+                .singleElement()
+                .satisfies(result -> {
+                    assertThat(result.chunkId()).isEqualTo("crisis-0");
+                    assertThat(result.protocolo()).isEqualTo("PROTO-TEST");
+                    assertThat(result.titulo()).isEqualTo("Protocolo de prueba");
+                    assertThat(result.seccion()).isEqualTo("Evaluación");
+                    assertThat(result.contenido())
+                            .isEqualTo("La crisis hipertensiva requiere valoración clínica inmediata.");
+                    assertThat(result.relevanceScore()).isGreaterThan(0.015);
+                });
 
         vectorStore.replaceDocument(document, "hash-v2", List.of(chunk("crisis-1", 0,
                 "La crisis hipertensiva requiere monitorización continua.")))
@@ -114,10 +120,16 @@ class PostgresProtocolVectorStoreIntegrationTest {
                         60,
                         0.55)
                 .block(Duration.ofSeconds(10)))
-                .containsExactly(new ProtocolChunk(
-                        "PROTO-TEST",
-                        "Evaluación",
-                        "La crisis hipertensiva requiere monitorización continua."));
+                .singleElement()
+                .satisfies(result -> {
+                    assertThat(result.chunkId()).isEqualTo("crisis-1");
+                    assertThat(result.protocolo()).isEqualTo("PROTO-TEST");
+                    assertThat(result.titulo()).isEqualTo("Protocolo de prueba");
+                    assertThat(result.seccion()).isEqualTo("Evaluación");
+                    assertThat(result.contenido())
+                            .isEqualTo("La crisis hipertensiva requiere monitorización continua.");
+                    assertThat(result.relevanceScore()).isGreaterThan(0.015);
+                });
     }
 
     @Test
@@ -146,10 +158,11 @@ class PostgresProtocolVectorStoreIntegrationTest {
                         60,
                         0.55)
                 .block(Duration.ofSeconds(10)))
-                .containsExactly(new ProtocolChunk(
-                        "PROTO-TEST",
-                        "Evaluación",
-                        "Contenido original de crisis hipertensiva."));
+                .singleElement()
+                .satisfies(result -> {
+                    assertThat(result.chunkId()).isEqualTo("stable-chunk");
+                    assertThat(result.contenido()).isEqualTo("Contenido original de crisis hipertensiva.");
+                });
     }
 
     private ProtocolDocument document() {

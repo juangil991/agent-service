@@ -58,6 +58,7 @@ app:
       result-limit: ${RAG_RESULT_LIMIT:3}
       rrf-k: ${RAG_RRF_K:60}
       max-cosine-distance: ${RAG_MAX_COSINE_DISTANCE:0.55}
+      minimum-rrf-score: ${RAG_MINIMUM_RRF_SCORE:0.015}
     ingestion:
       enabled: ${PROTOCOL_INGESTION_ENABLED:true}
     llm:

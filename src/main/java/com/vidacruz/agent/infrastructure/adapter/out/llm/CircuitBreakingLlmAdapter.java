@@ -22,16 +22,8 @@ public class CircuitBreakingLlmAdapter implements LlmPort {
     }
 
     @Override
-    public Mono<String> generateAnswer(String question, List<ProtocolChunk> evidence, String language) {
-        return protect(() -> delegate.generateAnswer(question, evidence, language));
-    }
-
-    @Override
-    public Mono<Boolean> evaluateAnswer(
-            String question,
-            String answer,
-            List<ProtocolChunk> evidence) {
-        return protect(() -> delegate.evaluateAnswer(question, answer, evidence));
+    public Mono<String> selectEvidence(String question, List<ProtocolChunk> evidence, String language) {
+        return protect(() -> delegate.selectEvidence(question, evidence, language));
     }
 
     private <T> Mono<T> protect(Supplier<Mono<T>> operation) {

@@ -1,11 +1,13 @@
 package com.vidacruz.agent.infrastructure.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.vidacruz.agent.application.exception.LlmUnavailableException;
 import com.vidacruz.agent.application.port.in.AskAssistantUseCase;
 import com.vidacruz.agent.application.port.out.LlmPort;
 import com.vidacruz.agent.application.port.out.ProtocolRetrievalPort;
 import com.vidacruz.agent.application.service.AssistantQueryService;
 import com.vidacruz.agent.domain.model.ProtocolChunk;
+import com.vidacruz.agent.domain.service.ProtocolEvidenceRelevance;
 import com.vidacruz.agent.domain.service.StructureBasedChunker;
 import com.vidacruz.agent.infrastructure.adapter.out.llm.CircuitBreakingLlmAdapter;
 import com.vidacruz.agent.infrastructure.adapter.out.llm.SpringAiOpenAiCompatibleLlmAdapter;
@@ -16,8 +18,6 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig.SlidingWindowType;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.evaluation.FactCheckingEvaluator;
-import org.springframework.ai.chat.evaluation.RelevancyEvaluator;
 import org.springframework.ai.model.tool.ToolCallingManager;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
@@ -131,11 +131,7 @@ public class AssistantConfiguration {
         LlmPort providerAdapter = new SpringAiOpenAiCompatibleLlmAdapter(
                 ChatClient.builder(chatModel).build(),
                 selected.displayName(),
-                selected.apiKey(),
-                RelevancyEvaluator.builder()
-                        .chatClientBuilder(ChatClient.builder(chatModel))
-                        .build(),
-                new FactCheckingEvaluator(ChatClient.builder(chatModel)));
+                selected.apiKey());
         return new CircuitBreakingLlmAdapter(providerAdapter, llmCircuitBreaker);
     }
 
@@ -144,28 +140,29 @@ public class AssistantConfiguration {
             LlmPort llm,
             ProtocolRetrievalPort retriever,
             MeterRegistry meterRegistry,
+            ObjectMapper objectMapper,
             @Value("${app.assistant.language:es}") String language,
             @Value("${app.assistant.retrieval.result-limit:3}") int resultLimit) {
-        return new AssistantQueryService(llm, retriever, language, resultLimit, meterRegistry);
+        return new AssistantQueryService(
+                llm,
+                retriever,
+                language,
+                resultLimit,
+                meterRegistry,
+                objectMapper,
+                new ProtocolEvidenceRelevance());
     }
 
     private LlmPort unavailablePort(String message) {
         return new LlmPort() {
             @Override
-            public Mono<String> generateAnswer(
+            public Mono<String> selectEvidence(
                     String question,
                     List<ProtocolChunk> evidence,
                     String language) {
                 return Mono.error(new LlmUnavailableException(message));
             }
 
-            @Override
-            public Mono<Boolean> evaluateAnswer(
-                    String question,
-                    String answer,
-                    List<ProtocolChunk> evidence) {
-                return Mono.error(new LlmUnavailableException(message));
-            }
         };
     }
 

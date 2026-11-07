@@ -33,6 +33,7 @@ public class PostgresProtocolVectorStoreAdapter implements ProtocolVectorStorePo
                 SELECT c.chunk_id,
                        RANK() OVER (ORDER BY pdb.score(c.chunk_id) DESC, c.chunk_id) AS position
                 FROM protocol_chunk c
+                JOIN protocol_document d ON d.document_id = c.document_id
                 WHERE c.content ||| :question
                    OR c.section ||| :question
                    OR c.protocol_id ||| :question
@@ -65,9 +66,10 @@ public class PostgresProtocolVectorStoreAdapter implements ProtocolVectorStorePo
                 FROM weighted_hits
                 GROUP BY chunk_id
             )
-            SELECT c.protocol_id, c.section, c.content
+            SELECT c.chunk_id, c.protocol_id, d.title, c.section, c.content, f.score AS relevance_score
             FROM fused_hits f
             JOIN protocol_chunk c ON c.chunk_id = f.chunk_id
+            JOIN protocol_document d ON d.document_id = c.document_id
             ORDER BY f.score DESC, c.chunk_id
             LIMIT :resultLimit
             """;
@@ -137,9 +139,12 @@ public class PostgresProtocolVectorStoreAdapter implements ProtocolVectorStorePo
                 .bind("rankConstant", rankConstant)
                 .bind("maxCosineDistance", maxCosineDistance)
                 .map((row, metadata) -> new ProtocolChunk(
+                        row.get("chunk_id", String.class),
                         row.get("protocol_id", String.class),
+                        row.get("title", String.class),
                         row.get("section", String.class),
-                        row.get("content", String.class)))
+                        row.get("content", String.class),
+                        row.get("relevance_score", Double.class)))
                 .all()
                 .collectList();
     }
